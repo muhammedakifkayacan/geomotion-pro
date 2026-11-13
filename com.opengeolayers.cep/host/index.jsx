@@ -627,6 +627,8 @@ var GeoMotionHost = (function () {
                     return { lat: lat, lon: lon, zoom: zCur };
                 }
 
+                var active = getOrCreateActiveGeoComp(data);
+
                 if (active && active instanceof CompItem) {
                     var ctrlLayer = null;
                     for (var i = 1; i <= active.numLayers; i++) {
@@ -647,6 +649,13 @@ var GeoMotionHost = (function () {
                         var zoomProp = fx.property("Mapcomp Zoom").property(1);
 
                         var totalKeys = Math.max(latProp.numKeys, Math.max(lonProp.numKeys, zoomProp.numKeys));
+
+                        // Always guarantee exact current CTI view has a full-res DETAIL atlas
+                        var ctiV = evalEffectiveViewAtTime(latProp, lonProp, zoomProp, active.time);
+                        curLat = ctiV.lat;
+                        curLon = ctiV.lon;
+                        curZoom = Math.min(18, Math.max(3, Math.round(ctiV.zoom)));
+                        addUniqueView(curLat, curLon, curZoom, "DETAIL", active.time);
 
                         if (totalKeys > 0 && !data.singleFrame) {
                             // 1. Collect all unique keyframe timestamps across Lat, Lon, and Zoom
@@ -977,10 +986,10 @@ var GeoMotionHost = (function () {
                 }
                 if (!tileFolder) tileFolder = app.project.items.addFolder(folderName);
 
-                // Remove old TILE_ or MAPCOMP_ATLAS_ layers before placing fresh finalized atlases
+                // Remove ALL old map tile / atlas layers before placing fresh finalized atlases
                 for (var idx = comp.numLayers; idx >= 1; idx--) {
                     var nm = comp.layer(idx).name;
-                    if (nm.indexOf("TILE_") === 0 || nm.indexOf("MAPCOMP_ATLAS_") === 0) {
+                    if (nm.indexOf("TILE_") === 0 || nm.indexOf("MAPCOMP_ATLAS_") === 0 || nm.indexOf("MAP_TILES_") === 0 || nm.indexOf("atlas_v45_") === 0) {
                         comp.layer(idx).remove();
                     }
                 }
@@ -1046,7 +1055,7 @@ var GeoMotionHost = (function () {
                             layer.property("Transform").property("Opacity").expression = [
                                 "function getCtrl(){ try { return thisComp.layer('MAP_CAMERA_CONTROLLER'); } catch(e){ return thisComp.layer('GEO_MAPCOMP_CONTROL'); } }",
                                 "var z = getCtrl().effect('Mapcomp Zoom')('Slider');",
-                                "linear(z, " + (tileZoom - 2.2).toFixed(2) + ", " + (tileZoom - 0.35).toFixed(2) + ", 0, 100);"
+                                "linear(z, " + (tileZoom - 2.0).toFixed(2) + ", " + (tileZoom - 0.8).toFixed(2) + ", 0, 100);"
                             ].join("\n");
                         } else {
                             layer.property("Transform").property("Opacity").setValue(100);
