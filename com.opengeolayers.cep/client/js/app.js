@@ -711,11 +711,23 @@
         el.style.color = isError ? "#fb7185" : "#7dd3fc";
     }
 
+    function getPreviewToCompZoomOffset() {
+        var box = document.getElementById("mapcompGuideBox");
+        var resEl = document.getElementById("compResPreset");
+        var resVal = ((resEl && resEl.value) ? resEl.value : "1080x1920").split("x");
+        var compW = parseInt(resVal[0], 10) || 1080;
+        var compH = parseInt(resVal[1], 10) || 1920;
+        var boxH = (box && box.clientHeight > 40) ? box.clientHeight : 260;
+        var ratio = compH / boxH;
+        return Math.log(Math.max(1.0, ratio)) / Math.LN2;
+    }
+
     function getMapcompSettings() {
         var resVal = (document.getElementById("compResPreset").value || "1920x1080").split("x");
         var lat = parseFloat(document.getElementById("inpViewLat").value) || 39.9255;
         var lon = parseFloat(document.getElementById("inpViewLon").value) || 32.8663;
-        var zoom = parseFloat(document.getElementById("inpViewZoom").value) || 6.0;
+        var previewZoom = parseFloat(document.getElementById("inpViewZoom").value) || 6.0;
+        var zoom = Math.min(18.5, Math.max(2.8, previewZoom + getPreviewToCompZoomOffset()));
         var pitch = parseFloat(document.getElementById("inpViewPitch").value) || 0;
         var bearing = parseFloat(document.getElementById("inpViewBearing").value) || 0;
         var provKey = document.getElementById("tileProviderSelect").value || "carto_dark";
@@ -1263,7 +1275,7 @@
         map = L.map("leafletMap", {
             center: [39.9255, 32.8663],
             zoom: 6,
-            minZoom: 2.8,
+            minZoom: 2.0,
             maxZoom: 19,
             zoomControl: false,
             attributionControl: false
@@ -2516,7 +2528,7 @@
 
         if (mapZoomSlider) {
             mapZoomSlider.addEventListener("input", function () {
-                var z = Math.max(2.8, parseFloat(this.value));
+                var z = Math.max(2.0, parseFloat(this.value));
                 if (lblZoomLevel) lblZoomLevel.textContent = "Z: " + z.toFixed(1);
                 if (map) map.setZoom(z);
                 var inpZ = document.getElementById("inpViewZoom");
@@ -2695,7 +2707,11 @@
                 var h = parseInt(dims[1], 10) || 1920;
 
                 var center = createModalMap ? createModalMap.getCenter() : (map ? map.getCenter() : { lat: 39.9255, lng: 32.8663 });
-                var zoom = createModalMap ? createModalMap.getZoom() : (map ? map.getZoom() : 6);
+                var previewZoom = createModalMap ? createModalMap.getZoom() : (map ? map.getZoom() : 6);
+                updateMapcompGuideBox(w, h);
+                var box = document.getElementById("mapcompGuideBox");
+                var boxH = (box && box.clientHeight > 40) ? box.clientHeight : 260;
+                var aeZoom = Math.min(18.5, Math.max(2.8, previewZoom + (Math.log(Math.max(1.0, h / boxH)) / Math.LN2)));
 
                 var payload = {
                     compName: compName,
@@ -2705,7 +2721,7 @@
                     duration: duration,
                     centerLat: center.lat,
                     centerLon: center.lng,
-                    zoom: zoom,
+                    zoom: aeZoom,
                     pitch: 35,
                     bearing: 0,
                     provider: "carto_dark",
@@ -2781,7 +2797,7 @@
         function syncViewInputsToMap() {
             var lat = parseFloat(document.getElementById("inpViewLat").value) || 39.9255;
             var lon = parseFloat(document.getElementById("inpViewLon").value) || 32.8663;
-            var z = Math.max(2.8, Math.min(19.0, parseFloat(document.getElementById("inpViewZoom").value) || 6));
+            var z = Math.max(2.0, Math.min(19.0, parseFloat(document.getElementById("inpViewZoom").value) || 6));
             document.getElementById("inpViewZoom").value = z.toFixed(1);
             map.setView([lat, lon], z, { animate: false });
             updateMapPerspectivePreview();

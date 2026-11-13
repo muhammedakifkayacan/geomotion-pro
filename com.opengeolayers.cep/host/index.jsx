@@ -401,6 +401,13 @@ var GeoMotionHost = (function () {
         } else {
             camLayer.name = "MAP_3D_CAMERA";
         }
+        // Enforce 1:1 camera zoom (1866px matching Position Z = -1866) across ALL comp aspect ratios (16:9, 9:16, 1:1, 4K)
+        try {
+            var camOpts = camLayer.property("ADBE Camera Options Group");
+            if (camOpts && camOpts.property("ADBE Camera Zoom")) {
+                camOpts.property("ADBE Camera Zoom").setValue(1866.0);
+            }
+        } catch (eCamZoom) {}
 
         // Ensure MAP_BACKGROUND_CANVAS is a pure 2D backdrop layer near the bottom of the layer stack
         // so it can NEVER slice through tilted 3D layers!
