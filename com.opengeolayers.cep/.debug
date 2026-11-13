@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ExtensionList>
+  <Extension Id="com.geomotion.cep.panel">
+    <HostList>
+      <Host Name="AEFT" Port="8866"/>
+    </HostList>
+  </Extension>
+  <Extension Id="com.opengeolayers.cep.panel">
+    <HostList>
+      <Host Name="AEFT" Port="8866"/>
+    </HostList>
+  </Extension>
+</ExtensionList>
