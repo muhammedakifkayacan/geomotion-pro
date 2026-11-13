@@ -111,7 +111,10 @@
                     <span class="diamond-icon">◆</span>
                     <span id="lblKeyframeBtn">Keyframe</span>
                 </button>
-                <button id="btnFinalizeMapcomp" class="gl-toolbar-btn gl-finalize-btn" title="Finalize Mapcomp: Download &amp; Stitch Verified High-Res PNG/JPG Tiles into After Effects">
+                <button id="btnFinalizeOneFrame" class="gl-toolbar-btn gl-keyframe-btn" title="Finalize One Frame: Sadece aktif kareyi (CTI) saniyeler içinde yüksek çözünürlüklü işler">
+                    <span>⚡ 1-Kare</span>
+                </button>
+                <button id="btnFinalizeMapcomp" class="gl-toolbar-btn gl-finalize-btn" title="Finalize Mapcomp: Tüm çalışma alanındaki (Work Area) keyframe ve geçişleri yüksek kalitede işler">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                         <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
@@ -228,6 +231,7 @@
         <!-- Right-Side Vertical Floating Tool Strip (Exact GEOlayers On-Map Tools) -->
         <div class="gl-onmap-vertical-tools">
             <button id="btnMapToolKeyframe" class="gl-map-tool-btn gl-gold" title="Add View Keyframe at CTI (◆)">◆</button>
+            <button id="btnPickFeatureOnMap" class="gl-map-tool-btn" title="Haritada Tıkla &amp; Coğrafi Sınır Seç (Click-to-Select Feature on Map)">🎯</button>
             <button id="btnSnapLayer" class="gl-map-tool-btn" title="Pin / Snap Selected AE Layer to Mapcomp Center">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                     <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2"/>
@@ -239,6 +243,8 @@
                     <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" stroke="currentColor" stroke-width="2"/>
                 </svg>
             </button>
+            <button id="btnAddScaleAndCompass" class="gl-map-tool-btn" title="Dinamik Ölçek Çubuğu ve Kuzey Pusulası Ekle (Scale Bar &amp; North Needle)">🧭</button>
+            <button id="btnAddLocatorInset" class="gl-map-tool-btn" title="Köşe Haritası Oluştur (Locator / Inset Overview Map)">🗺️</button>
             <button id="btnDrawHelplines" class="gl-map-tool-btn" title="Draw Lat/Lon Graticule Helplines Grid in Mapcomp">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                     <rect x="3" y="3" width="18" height="18" stroke="currentColor" stroke-width="1.8"/>
@@ -339,18 +345,21 @@
                 </button>
             </div>
 
-            <!-- Live Overpass API OSM Vector Extractor + GeoJSON File Import -->
+            <!-- Live Overpass API OSM Vector Extractor + GeoJSON/GPX/CSV File Import -->
             <div class="gl-overpass-strip">
-                <span class="gl-strip-label">OSM Overpass:</span>
+                <span class="gl-strip-label">OSM &amp; Veri:</span>
                 <button id="btnOverpassRoads" class="gl-chip-action" title="Download Major Highways/Roads in Current Map View via Overpass API">
-                    + Roads in View
+                    + Roads
                 </button>
                 <button id="btnOverpassRivers" class="gl-chip-action" title="Download Rivers/Waterways in Current Map View via Overpass API">
-                    + Rivers in View
+                    + Rivers
                 </button>
-                <label class="gl-chip-action gl-file-label" title="Import Local .geojson, .json, or .gpx File into Feature Collection">
-                    <span>+ GeoJSON File</span>
-                    <input type="file" id="inpImportGeoJSONFile" accept=".geojson,.json" class="hidden" />
+                <button id="btnOverpassBuildings" class="gl-chip-action" title="Download OSM Building Footprints in View for 3D Extrusion">
+                    + 3D Buildings
+                </button>
+                <label class="gl-chip-action gl-file-label" title="Import Local .geojson, .json, .gpx, .csv, or .tsv File into Feature Collection">
+                    <span>+ GeoJSON / GPX / CSV</span>
+                    <input type="file" id="inpImportGeoJSONFile" accept=".geojson,.json,.gpx,.csv,.tsv,.kml" class="hidden" />
                 </label>
             </div>
 
@@ -375,17 +384,20 @@
                 <button id="btnFitSelectedFeature" class="gl-btn-secondary" title="Fit Mapcomp View to Selected Feature Bounds">
                     Fit View
                 </button>
+                <button id="btnMergeFeatures" class="gl-btn-secondary" title="Merge Feature Geometries in Collection into a Combined Multi-Polygon">
+                    Merge
+                </button>
                 <button id="btnLabelSelectedFeature" class="gl-btn-secondary" title="Attach Active Label Template to Selected Feature">
                     + Label
                 </button>
             </div>
         </div>
 
-        <!-- TAB 2: SHAPE LAYER STYLES MANAGER -->
+        <!-- TAB 2: SHAPE LAYER STYLES MANAGER, CHOROPLETH & MAP IMAGERY STYLER -->
         <div id="tab-styles" class="gl-tab-pane">
             <div class="gl-card">
                 <div class="gl-card-title-row">
-                    <h4>Shape Layer Style Presets</h4>
+                    <h4>Shape Layer Style Presets &amp; Simplification</h4>
                     <button id="btnSaveCustomStyle" class="gl-mini-action">+ Save Style</button>
                 </div>
                 <div id="styleSwatchGrid" class="gl-style-swatch-grid">
@@ -432,20 +444,81 @@
                         <input type="number" id="borderExtrudeDepth" value="0" min="0" max="200" />
                     </div>
                     <div class="gl-field">
-                        <label>Trim Duration (s)</label>
-                        <input type="number" id="borderAnimDuration" value="2.5" step="0.5" min="0.5" max="20" />
+                        <label title="Douglas-Peucker Geometry Simplification Tolerance (0 = Full Detail)">Simplify Geometry</label>
+                        <select id="inpSimplifyTolerance">
+                            <option value="0">0 (Tam Detay)</option>
+                            <option value="0.015" selected>Auto (Akıcı AE Performansı)</option>
+                            <option value="0.05">Yüksek Sadeleştirme (Hızlı)</option>
+                        </select>
                     </div>
                 </div>
 
-                <div class="gl-grid-2">
-                    <label class="gl-check-label">
+                <div class="gl-grid-3">
+                    <div class="gl-field">
+                        <label>Trim Duration (s)</label>
+                        <input type="number" id="borderAnimDuration" value="2.5" step="0.5" min="0.5" max="20" />
+                    </div>
+                    <label class="gl-check-label" style="margin-top:16px;">
                         <input type="checkbox" id="borderAnimateTrim" checked />
-                        <span>Animate Trim Paths In</span>
+                        <span>Trim Paths In</span>
                     </label>
-                    <label class="gl-check-label">
+                    <label class="gl-check-label" style="margin-top:16px;">
                         <input type="checkbox" id="borderDashedStroke" />
-                        <span>Dashed Border Stroke</span>
+                        <span>Dashed Stroke</span>
                     </label>
+                </div>
+            </div>
+
+            <!-- CHOROPLETH & TIME-SERIES STAGGER CARD -->
+            <div class="gl-card">
+                <div class="gl-card-title-row">
+                    <h4>Choropleth (Isı Haritası) &amp; Time-Series Stagger</h4>
+                    <span class="gl-tag">Data-Driven</span>
+                </div>
+                <div class="gl-grid-3">
+                    <div class="gl-field">
+                        <label>Low Value Color</label>
+                        <input type="color" id="choroColorLow" value="#38bdf8" />
+                    </div>
+                    <div class="gl-field">
+                        <label>High Value Color</label>
+                        <input type="color" id="choroColorHigh" value="#f43f5e" />
+                    </div>
+                    <div class="gl-field">
+                        <label>Time-Series Step (s)</label>
+                        <input type="number" id="inpTimeSeriesStep" value="0.4" step="0.1" min="0.1" max="5.0" />
+                    </div>
+                </div>
+                <div class="gl-row-btns">
+                    <button id="btnDrawChoropleth" class="gl-btn-primary-wide" title="Draw Collection Features Colored by Value Gradient (Choropleth)">Draw Choropleth Gradient</button>
+                    <button id="btnStaggerTimeSeries" class="gl-btn-secondary" title="Sequence All Drawn Map Features sequentially along AE Timeline">⏱️ Time-Series Sırala</button>
+                </div>
+            </div>
+
+            <!-- MAP IMAGERY COLORIZER, WATERMASK & 3D ATMOSPHERE / DOF -->
+            <div class="gl-card">
+                <div class="gl-card-title-row">
+                    <h4>Map Imagery Colorizer, Watermask &amp; 3D DOF/Fog</h4>
+                    <span class="gl-tag">Visual Renderers</span>
+                </div>
+                <div class="gl-grid-3">
+                    <div class="gl-field">
+                        <label>Ocean / Shadow Tint</label>
+                        <input type="color" id="themeWaterColor" value="#090d16" />
+                    </div>
+                    <div class="gl-field">
+                        <label>Land / Midtone Tint</label>
+                        <input type="color" id="themeLandColor" value="#1e293b" />
+                    </div>
+                    <div class="gl-field">
+                        <label>Road / Border Tint</label>
+                        <input type="color" id="themeHighlightColor" value="#38bdf8" />
+                    </div>
+                </div>
+                <div class="gl-row-btns">
+                    <button id="btnApplyMapColorizer" class="gl-btn-secondary" title="Apply Custom Color Palette Theme to Map Imagery">🎨 Renk Teması Uygula</button>
+                    <button id="btnAddWatermask" class="gl-btn-secondary" title="Create Watermask &amp; Animated Ocean Wave Shimmer Layer">🌊 Su Maskesi (Watermask)</button>
+                    <button id="btnApplyAtmosphereDOF" class="gl-btn-primary-wide" title="Enable 3D Camera Depth of Field (DOF), Horizon Fog &amp; Layer Drop Shadows">🌫️ 3D Sis, Gölge &amp; DOF</button>
                 </div>
             </div>
         </div>
@@ -506,6 +579,31 @@
                     + Add Label at Mapcomp Center Crosshair
                 </button>
             </div>
+
+            <!-- SCALE BAR, NORTH NEEDLE & 2-POINT GEOREFERENCING -->
+            <div class="gl-card">
+                <div class="gl-card-title-row">
+                    <h4>Scale Bar, North Needle &amp; 2-Point Georeference</h4>
+                    <span class="gl-tag">Map Helpers</span>
+                </div>
+                <div class="gl-row-btns" style="margin-bottom:8px;">
+                    <button id="btnTabAddScaleCompass" class="gl-btn-secondary">🧭 Scale Bar &amp; North Needle Ekle</button>
+                    <button id="btnTabAddLocator" class="gl-btn-secondary">🗺️ Köşe Haritası (Locator Inset)</button>
+                </div>
+                <div class="gl-grid-2">
+                    <div class="gl-field">
+                        <label>Point 1 (NW Lat, Lon)</label>
+                        <input type="text" id="inpGeoPoint1" value="42.1, 26.0" />
+                    </div>
+                    <div class="gl-field">
+                        <label>Point 2 (SE Lat, Lon)</label>
+                        <input type="text" id="inpGeoPoint2" value="35.8, 44.8" />
+                    </div>
+                </div>
+                <button id="btnGeoreferenceLayer" class="gl-btn-primary-wide" title="Position &amp; Scale Selected AE Layer Between Two Geographic Points">
+                    📐 Position Selected Layer by Two Geo-Points (Georeference)
+                </button>
+            </div>
         </div>
 
         <!-- TAB 4: CONNECT FEATURES & FLY-TO CAMERA ANIMATOR -->
@@ -513,7 +611,7 @@
             <div class="gl-card">
                 <div class="gl-card-title-row">
                     <h4>Connect Features (OSRM Road &amp; Flight Arcs)</h4>
-                    <span class="gl-tag">Auto-Orient Tracker</span>
+                    <span class="gl-tag">Auto-Orient Arrow</span>
                 </div>
 
                 <div class="gl-grid-2">
@@ -537,8 +635,11 @@
                         </select>
                     </div>
                     <div class="gl-field">
-                        <label>Stroke Color</label>
-                        <input type="color" id="routeStrokeColor" value="#f43f5e" />
+                        <label>Tracker Head Style</label>
+                        <select id="routeHeadStyleSelect">
+                            <option value="arrow" selected>Dynamic Arrow (➢)</option>
+                            <option value="circle">Circle Marker (●)</option>
+                        </select>
                     </div>
                     <div class="gl-field">
                         <label>Duration (s)</label>
@@ -547,19 +648,20 @@
                 </div>
 
                 <div class="gl-grid-3">
-                    <label class="gl-check-label">
+                    <div class="gl-field">
+                        <label>Stroke Color</label>
+                        <input type="color" id="routeStrokeColor" value="#f43f5e" />
+                    </div>
+                    <label class="gl-check-label" style="margin-top:16px;">
                         <input type="checkbox" id="routeDashedCheck" />
                         <span>Dashed Path</span>
                     </label>
-                    <label class="gl-check-label">
+                    <label class="gl-check-label" style="margin-top:16px;">
                         <input type="checkbox" id="routeHeadMarkerCheck" checked />
-                        <span>Pin Tracker</span>
-                    </label>
-                    <label class="gl-check-label">
-                        <input type="checkbox" id="routeCameraFollowCheck" checked />
-                        <span>Follow View</span>
+                        <span>Tracker On</span>
                     </label>
                 </div>
+                <input type="checkbox" id="routeCameraFollowCheck" checked class="hidden" />
 
                 <div id="routeDistanceInfo" class="gl-info-banner hidden"></div>
 
@@ -739,8 +841,8 @@
 
             <div class="gl-card">
                 <div class="gl-card-title-row">
-                    <h4>3D DEM Elevation &amp; Data-Driven Bars</h4>
-                    <span class="gl-tag">Open-Meteo DEM</span>
+                    <h4>3D DEM Elevation, Heightmap &amp; Data Bars</h4>
+                    <span class="gl-tag">FreeForm / Mir / Helium</span>
                 </div>
                 <div class="gl-grid-2">
                     <div class="gl-field">
@@ -758,6 +860,7 @@
                 </div>
                 <div class="gl-row-btns">
                     <button id="btnGenerate3DTerrain" class="gl-btn-secondary">Build 3D DEM Relief</button>
+                    <button id="btnExportHeightmapRig" class="gl-btn-secondary" title="Generate Grayscale Heightmap PNG &amp; Import for FreeForm Pro / Mir / Helium / Displacement">🗻 Export Heightmap Rig</button>
                     <button id="btnCreateDataChart" class="gl-btn-primary-wide">Draw 3D Data Bars</button>
                 </div>
                 <textarea id="dataChartTextarea" class="hidden" rows="2">İstanbul, 41.0082, 28.9784, 15840900, #38bdf8
@@ -765,6 +868,29 @@ Ankara, 39.9255, 32.8663, 5782285, #818cf8
 İzmir, 38.4237, 27.1428, 4462056, #34d399
 Bursa, 40.1885, 29.0610, 3194720, #fbbf24
 Antalya, 36.8969, 30.7133, 2688004, #f43f5e</textarea>
+            </div>
+
+            <!-- CUSTOM TMS / WMS SERVER PROFILES & CACHE DIRECTORY MANAGER -->
+            <div class="gl-card">
+                <div class="gl-card-title-row">
+                    <h4>Custom TMS/XYZ Server Profiles &amp; Cache Manager</h4>
+                    <span class="gl-tag" id="lblCacheSizeBadge">Cache Ready</span>
+                </div>
+                <div class="gl-grid-2">
+                    <div class="gl-field">
+                        <label>Custom Server Name</label>
+                        <input type="text" id="inpCustomTileName" placeholder="e.g. Google Hybrid / Sentinel-2" />
+                    </div>
+                    <div class="gl-field">
+                        <label>Tile URL Template ({z}/{x}/{y})</label>
+                        <input type="text" id="inpCustomTileUrl" placeholder="https://tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    </div>
+                </div>
+                <div class="gl-row-btns">
+                    <button id="btnAddCustomTileServer" class="gl-btn-primary-wide">+ Add Custom Server Profile</button>
+                    <button id="btnExportServerProfiles" class="gl-btn-secondary" title="Export Custom Server Profiles as JSON">Export Profiles</button>
+                    <button id="btnClearTileCache" class="gl-btn-secondary" title="Clear Downloaded Tile Cache Folder from Temp Disk">🗑️ Clear Cache</button>
+                </div>
             </div>
         </div>
 
