@@ -9,6 +9,23 @@
 </head>
 <body>
     <!-- ===================================================================
+         AUTO-UPDATE NOTIFICATION BANNER
+         =================================================================== -->
+    <div id="glUpdateBanner" class="gl-update-banner hidden">
+        <div class="gl-update-banner-left">
+            <span class="gl-update-icon">🚀</span>
+            <div class="gl-update-text">
+                <span class="gl-update-title">GeoMotion Pro v<span id="lblUpdateNewVer">3.1.0</span> hazır!</span>
+                <span class="gl-update-desc" id="lblUpdateDesc">Yeni sürüm mevcut.</span>
+            </div>
+        </div>
+        <div class="gl-update-banner-right">
+            <button id="btnOpenUpdateModal" class="gl-update-action-btn">Yenilikleri Gör &amp; Güncelle</button>
+            <button id="btnDismissUpdate" class="gl-update-close-btn" title="Kapat">✕</button>
+        </div>
+    </div>
+
+    <!-- ===================================================================
          1. AUTHENTIC GEOLAYERS 3 TOP HEADER BAR
          =================================================================== -->
     <header class="gl-top-bar">
@@ -902,6 +919,10 @@ Antalya, 36.8969, 30.7133, 2688004, #f43f5e</textarea>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" stroke="currentColor" stroke-width="2"/></svg>
                     <span id="i18n_cmTabTools">Animasyon &amp; Easing</span>
                 </button>
+                <button class="gl-comp-tab-btn" data-cm-tab="cm-tab-about" id="cm_tab_about_btn">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><line x1="12" y1="16" x2="12" y2="12" stroke="currentColor" stroke-width="2"/><line x1="12" y1="8" x2="12.01" y2="8" stroke="currentColor" stroke-width="2"/></svg>
+                    <span id="i18n_cmTabAbout">Hakkında &amp; Güncelleme</span>
+                </button>
             </div>
 
             <div class="gl-comp-modal-body">
@@ -1126,6 +1147,51 @@ Antalya, 36.8969, 30.7133, 2688004, #f43f5e</textarea>
                                 <p id="i18n_toolLockDesc">Sahnedeki harita ve atlas katmanlarını tek tıkla kilitleyerek After Effects penceresinde yanlışlıkla tıklanıp kaydırılmasını önler.</p>
                             </div>
                             <button id="btnToggleLayerLock" class="gl-btn-secondary" style="white-space: nowrap;">Katmanları Kilitle/Aç</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 4: ABOUT & AUTO-UPDATES -->
+                <div id="cm-tab-about" class="gl-cm-pane">
+                    <div class="gl-about-hero">
+                        <div class="gl-about-logo">🌍</div>
+                        <div>
+                            <h4>GeoMotion Pro</h4>
+                            <p class="gl-about-tagline">Adobe After Effects için Açık Kaynak Harita &amp; Hareketli Grafik Motoru</p>
+                            <span class="gl-about-ver-badge">Yüklü Sürüm: <strong id="lblInstalledVer">v3.0.0</strong></span>
+                        </div>
+                    </div>
+
+                    <div class="gl-about-box">
+                        <div class="gl-field">
+                            <label>GitHub Deposu (Repository)</label>
+                            <div class="gl-input-btn-row">
+                                <input type="text" id="inpGithubRepo" value="akifm1pro/geomotion-pro" placeholder="kullanıcı_adı/geomotion-pro" />
+                                <button id="btnSaveGithubRepo" class="gl-btn-secondary">Kaydet</button>
+                            </div>
+                            <small class="gl-hint-text">GitHub'a yüklediğiniz deponun adını buraya yazın (ör: <code>kullanici/geomotion-pro</code>).</small>
+                        </div>
+
+                        <div class="gl-update-check-section">
+                            <button id="btnCheckUpdateManual" class="gl-btn-primary gl-btn-check-update">
+                                <span>🔄 Güncellemeleri Şimdi Denetle</span>
+                            </button>
+                            <div id="lblUpdateStatus" class="gl-update-status-msg"></div>
+                        </div>
+
+                        <div id="updateResultCard" class="gl-update-result-card hidden">
+                            <div class="gl-urc-head">
+                                <span class="gl-urc-tag">🚀 Yeni Sürüm Mevcut!</span>
+                                <strong id="lblFoundVerTitle">v3.1.0</strong>
+                            </div>
+                            <div class="gl-urc-changelog">
+                                <h5>Sürüm Yenilikleri:</h5>
+                                <pre id="lblFoundChangelog"></pre>
+                            </div>
+                            <div class="gl-urc-actions">
+                                <button id="btnInstallUpdateNow" class="gl-update-action-btn">⚡ Tek Tıkla Canlı Güncelle (Hot Update)</button>
+                                <button id="btnDownloadInstallerPkg" class="gl-btn-secondary">📥 İndir (.dmg / .exe)</button>
+                            </div>
                         </div>
                     </div>
                 </div>
