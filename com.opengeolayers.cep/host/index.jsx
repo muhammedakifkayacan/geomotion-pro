@@ -649,7 +649,7 @@ var GeoMotionHost = (function () {
 
                         var totalKeys = Math.max(latProp.numKeys, Math.max(lonProp.numKeys, zoomProp.numKeys));
 
-                        if (totalKeys > 0) {
+                        if (totalKeys > 0 && !data.singleFrame) {
                             // 1. Collect all unique keyframe timestamps across Lat, Lon, and Zoom
                             var rawTimes = [];
                             var propList = [latProp, lonProp, zoomProp];
@@ -695,10 +695,11 @@ var GeoMotionHost = (function () {
                                 }
                             }
                         } else {
-                            // No keyframes: use controller's static view
-                            curLat = latProp.value;
-                            curLon = lonProp.value;
-                            curZoom = Math.min(18, Math.max(3, Math.round(zoomProp.value)));
+                            // Single Frame mode or No keyframes: evaluate exact view at current CTI
+                            var ctiV = evalEffectiveViewAtTime(latProp, lonProp, zoomProp, active.time);
+                            curLat = ctiV.lat;
+                            curLon = ctiV.lon;
+                            curZoom = Math.min(18, Math.max(3, Math.round(ctiV.zoom)));
                             addUniqueView(curLat, curLon, curZoom, "DETAIL", active.time);
                         }
                     }
@@ -1256,18 +1257,37 @@ var GeoMotionHost = (function () {
 
                 if (data.addHeadMarker !== false) {
                     var headLayer = comp.layers.addShape();
+                    var headStyle = data.headStyle || "arrow";
                     headLayer.name = "ROUTE_TRACKER_" + (data.routeName || "Tracker");
-                    headLayer.comment = "Tracker Pin Following Route";
+                    headLayer.comment = "Tracker Pin / Dynamic Arrowhead Following Route";
                     attachCoplanarToAnchor(headLayer, rig.anchor, [0, 0, -6], [100, 100, 100]);
 
                     var hGroup = headLayer.property("Contents").addProperty("ADBE Vector Group");
-                    var ellipse = hGroup.property("Contents").addProperty("ADBE Vector Shape - Ellipse");
-                    ellipse.property("Size").setValue([22, 22]);
-                    var hFill = hGroup.property("Contents").addProperty("ADBE Vector Graphic - Fill");
-                    hFill.property("Color").setValue([1, 1, 1]);
-                    var hStroke = hGroup.property("Contents").addProperty("ADBE Vector Graphic - Stroke");
-                    hStroke.property("Color").setValue(hexToRgb(data.strokeColor || "#f43f5e"));
-                    hStroke.property("Stroke Width").setValue(5);
+                    if (headStyle === "arrow") {
+                        var arrowShapeProp = hGroup.property("Contents").addProperty("ADBE Vector Shape - Group");
+                        var arrowShape = new Shape();
+                        arrowShape.vertices = [[-14, -10], [16, 0], [-14, 10], [-7, 0]];
+                        arrowShape.closed = true;
+                        arrowShapeProp.property("Path").setValue(arrowShape);
+                        var aFill = hGroup.property("Contents").addProperty("ADBE Vector Graphic - Fill");
+                        aFill.property("Color").setValue(hexToRgb(data.strokeColor || "#f43f5e"));
+                        var aStroke = hGroup.property("Contents").addProperty("ADBE Vector Graphic - Stroke");
+                        aStroke.property("Color").setValue([1, 1, 1]);
+                        aStroke.property("Stroke Width").setValue(3);
+                        // Auto-orient Z Rotation along the 2D route velocity tangent!
+                        headLayer.property("Transform").property("Z Rotation").expression = [
+                            "var v = transform.position.velocity;",
+                            "(length(v) > 0.1) ? radiansToDegrees(Math.atan2(v[1], v[0])) : value;"
+                        ].join("\n");
+                    } else {
+                        var ellipse = hGroup.property("Contents").addProperty("ADBE Vector Shape - Ellipse");
+                        ellipse.property("Size").setValue([22, 22]);
+                        var hFill = hGroup.property("Contents").addProperty("ADBE Vector Graphic - Fill");
+                        hFill.property("Color").setValue([1, 1, 1]);
+                        var hStroke = hGroup.property("Contents").addProperty("ADBE Vector Graphic - Stroke");
+                        hStroke.property("Color").setValue(hexToRgb(data.strokeColor || "#f43f5e"));
+                        hStroke.property("Stroke Width").setValue(5);
+                    }
 
                     var posProp = headLayer.property("Transform").property("Position");
                     var sampleCount = Math.min(vertices.length, 32);
@@ -2065,6 +2085,505 @@ var GeoMotionHost = (function () {
                     ok: true,
                     draftMode: !enableAtlas,
                     message: enableAtlas ? "Normal Render Modu: Atlaslar görünür." : "⚡ Turbo Draft Modu: Atlaslar gizlendi, 60 FPS akıcı önizleme aktif!"
+                });
+            } catch (err) {
+                app.endUndoGroup();
+                return JSON.stringify({ ok: false, error: err.toString() });
+            }
+        },
+
+        // =====================================================================
+        // NEW GEOLAYERS 3 PARITY TOOLS: SCALE BAR, COMPASS, LOCATOR, WATERMASK,
+        // HEIGHTMAP, ATMOSPHERE/DOF, COLORIZER, GEOREFERENCE & TIME-SERIES
+        // =====================================================================
+
+        createScaleBarAndCompass: function (payloadJson) {
+            app.beginUndoGroup("GeoMotion: Add Scale Bar & North Compass");
+            try {
+                var data = JSON.parse(payloadJson || "{}");
+                var comp = getOrCreateActiveGeoComp(data);
+                ensureMapcompRig(comp, data);
+
+                // Remove old if exists
+                for (var i = comp.numLayers; i >= 1; i--) {
+                    var nm = comp.layer(i).name;
+                    if (nm === "MAP_NORTH_COMPASS" || nm === "MAP_SCALE_BAR" || nm === "MAP_SCALE_TEXT") {
+                        comp.layer(i).remove();
+                    }
+                }
+
+                // 1. NORTH COMPASS NEEDLE (Top-Right HUD, rotates with Mapcomp Bearing)
+                var compass = comp.layers.addShape();
+                compass.name = "MAP_NORTH_COMPASS";
+                compass.comment = "Dynamic North Needle (Rotates with Mapcomp Bearing)";
+                compass.label = 13;
+                compass.property("Position").setValue([comp.width - 85, 85]);
+
+                var cContents = compass.property("Contents");
+                // Outer HUD Circle
+                var ringGrp = cContents.addProperty("ADBE Vector Group");
+                ringGrp.name = "CompassRing";
+                var ringEl = ringGrp.property("Contents").addProperty("ADBE Vector Shape - Ellipse");
+                ringEl.property("Size").setValue([64, 64]);
+                var ringFill = ringGrp.property("Contents").addProperty("ADBE Vector Graphic - Fill");
+                ringFill.property("Color").setValue([0.06, 0.09, 0.16]);
+                ringFill.property("Opacity").setValue(80);
+                var ringStroke = ringGrp.property("Contents").addProperty("ADBE Vector Graphic - Stroke");
+                ringStroke.property("Color").setValue([0.38, 0.65, 0.98]);
+                ringStroke.property("Stroke Width").setValue(2);
+
+                // North Red Pointer Triangle
+                var northGrp = cContents.addProperty("ADBE Vector Group");
+                northGrp.name = "NorthNeedle";
+                var nPathProp = northGrp.property("Contents").addProperty("ADBE Vector Shape - Group");
+                var nShape = new Shape();
+                nShape.vertices = [[0, -24], [8, 0], [-8, 0]];
+                nShape.closed = true;
+                nPathProp.property("Path").setValue(nShape);
+                var nFill = northGrp.property("Contents").addProperty("ADBE Vector Graphic - Fill");
+                nFill.property("Color").setValue([0.96, 0.25, 0.37]);
+
+                // South White Pointer Triangle
+                var southGrp = cContents.addProperty("ADBE Vector Group");
+                southGrp.name = "SouthNeedle";
+                var sPathProp = southGrp.property("Contents").addProperty("ADBE Vector Shape - Group");
+                var sShape = new Shape();
+                sShape.vertices = [[0, 24], [8, 0], [-8, 0]];
+                sShape.closed = true;
+                sPathProp.property("Path").setValue(sShape);
+                var sFill = southGrp.property("Contents").addProperty("ADBE Vector Graphic - Fill");
+                sFill.property("Color").setValue([0.9, 0.94, 1.0]);
+
+                compass.property("Transform").property("Rotation").expression = [
+                    "function getCtrl(){ try { return thisComp.layer('MAP_CAMERA_CONTROLLER'); } catch(e){ return thisComp.layer('GEO_MAPCOMP_CONTROL'); } }",
+                    "-getCtrl().effect('Mapcomp Bearing')('Slider');"
+                ].join("\n");
+
+                // 2. DYNAMIC SCALE BAR & LIVE KM READOUT (Bottom-Left HUD)
+                var scaleBar = comp.layers.addShape();
+                scaleBar.name = "MAP_SCALE_BAR";
+                scaleBar.comment = "Dynamic Scale Bar Bracket (160px Reference)";
+                scaleBar.label = 13;
+                scaleBar.property("Position").setValue([140, comp.height - 50]);
+
+                var sbGrp = scaleBar.property("Contents").addProperty("ADBE Vector Group");
+                var sbPathProp = sbGrp.property("Contents").addProperty("ADBE Vector Shape - Group");
+                var sbShape = new Shape();
+                sbShape.vertices = [[-80, -8], [-80, 4], [80, 4], [80, -8]];
+                sbShape.closed = false;
+                sbPathProp.property("Path").setValue(sbShape);
+                var sbStroke = sbGrp.property("Contents").addProperty("ADBE Vector Graphic - Stroke");
+                sbStroke.property("Color").setValue([1, 1, 1]);
+                sbStroke.property("Stroke Width").setValue(3);
+
+                var scaleTxt = comp.layers.addText("500 km");
+                scaleTxt.name = "MAP_SCALE_TEXT";
+                scaleTxt.comment = "Live Distance Readout Driven by Mapcomp Zoom & Latitude";
+                scaleTxt.label = 13;
+                scaleTxt.property("Position").setValue([140, comp.height - 62]);
+                var tProp = scaleTxt.property("Source Text");
+                var tDoc = tProp.value;
+                tDoc.fontSize = 20;
+                tDoc.fillColor = [1, 1, 1];
+                tDoc.justification = ParagraphJustification.CENTER_JUSTIFY;
+                tProp.setValue(tDoc);
+
+                tProp.expression = [
+                    "function getCtrl(){ try { return thisComp.layer('MAP_CAMERA_CONTROLLER'); } catch(e){ return thisComp.layer('GEO_MAPCOMP_CONTROL'); } }",
+                    "var c = getCtrl();",
+                    "var z = c.effect('Mapcomp Zoom')('Slider');",
+                    "var lat = c.effect('Mapcomp Latitude')('Slider');",
+                    "var kmPerPx = (40075.016 * Math.cos(lat * Math.PI / 180.0)) / (256.0 * Math.pow(2, z));",
+                    "var d = kmPerPx * 160.0;",
+                    "if (d >= 100) Math.round(d / 10) * 10 + ' km';",
+                    "else if (d >= 10) Math.round(d) + ' km';",
+                    "else if (d >= 1) d.toFixed(1) + ' km';",
+                    "else Math.round(d * 1000) + ' m';"
+                ].join("\n");
+
+                app.endUndoGroup();
+                return JSON.stringify({
+                    ok: true,
+                    message: "Dinamik Ölçek Çubuğu (MAP_SCALE_BAR) ve Kuzey Pusulası (MAP_NORTH_COMPASS) eklendi!"
+                });
+            } catch (err) {
+                app.endUndoGroup();
+                return JSON.stringify({ ok: false, error: err.toString() });
+            }
+        },
+
+        createLocatorInsetMap: function (payloadJson) {
+            app.beginUndoGroup("GeoMotion: Create Locator Inset Map");
+            try {
+                var data = JSON.parse(payloadJson || "{}");
+                var comp = getOrCreateActiveGeoComp(data);
+                ensureMapcompRig(comp, data);
+
+                for (var i = comp.numLayers; i >= 1; i--) {
+                    var nm = comp.layer(i).name;
+                    if (nm === "LOCATOR_INSET_FRAME" || nm === "LOCATOR_TARGET_BOX") {
+                        comp.layer(i).remove();
+                    }
+                }
+
+                var boxW = 320;
+                var boxH = 180;
+                var posX = 40 + boxW / 2;
+                var posY = 40 + boxH / 2;
+
+                // 1. Locator Inset Frame & Graticule Box
+                var frameLyr = comp.layers.addShape();
+                frameLyr.name = "LOCATOR_INSET_FRAME";
+                frameLyr.comment = "Corner Overview Locator Map Frame";
+                frameLyr.label = 10;
+                frameLyr.property("Position").setValue([posX, posY]);
+
+                var fGroup = frameLyr.property("Contents").addProperty("ADBE Vector Group");
+                var fRect = fGroup.property("Contents").addProperty("ADBE Vector Shape - Rect");
+                fRect.property("Size").setValue([boxW, boxH]);
+                fRect.property("Roundness").setValue(8);
+                var fFill = fGroup.property("Contents").addProperty("ADBE Vector Graphic - Fill");
+                fFill.property("Color").setValue([0.05, 0.08, 0.14]);
+                fFill.property("Opacity").setValue(85);
+                var fStroke = fGroup.property("Contents").addProperty("ADBE Vector Graphic - Stroke");
+                fStroke.property("Color").setValue([0.22, 0.74, 0.97]);
+                fStroke.property("Stroke Width").setValue(2);
+
+                // 2. Dynamic Red Target Indicator linked to MAP_CAMERA_CONTROLLER Lat/Lon/Zoom
+                var targetBox = comp.layers.addShape();
+                targetBox.name = "LOCATOR_TARGET_BOX";
+                targetBox.comment = "Live Camera Position Indicator on Locator Map";
+                targetBox.label = 1; // Red
+                var tGroup = targetBox.property("Contents").addProperty("ADBE Vector Group");
+                var tRect = tGroup.property("Contents").addProperty("ADBE Vector Shape - Rect");
+                tRect.property("Size").setValue([44, 28]);
+                var tFill = tGroup.property("Contents").addProperty("ADBE Vector Graphic - Fill");
+                tFill.property("Color").setValue([0.96, 0.25, 0.37]);
+                tFill.property("Opacity").setValue(35);
+                var tStroke = tGroup.property("Contents").addProperty("ADBE Vector Graphic - Stroke");
+                tStroke.property("Color").setValue([0.96, 0.25, 0.37]);
+                tStroke.property("Stroke Width").setValue(2.5);
+
+                targetBox.property("Transform").property("Position").expression = [
+                    "function getCtrl(){ try { return thisComp.layer('MAP_CAMERA_CONTROLLER'); } catch(e){ return thisComp.layer('GEO_MAPCOMP_CONTROL'); } }",
+                    "var c = getCtrl();",
+                    "var lat = c.effect('Mapcomp Latitude')('Slider');",
+                    "var lon = c.effect('Mapcomp Longitude')('Slider');",
+                    "var x = " + posX + " + (lon / 180.0) * " + (boxW / 2 - 16) + ";",
+                    "var y = " + posY + " - (lat / 85.0) * " + (boxH / 2 - 12) + ";",
+                    "[x, y];"
+                ].join("\n");
+
+                targetBox.property("Transform").property("Scale").expression = [
+                    "function getCtrl(){ try { return thisComp.layer('MAP_CAMERA_CONTROLLER'); } catch(e){ return thisComp.layer('GEO_MAPCOMP_CONTROL'); } }",
+                    "var z = getCtrl().effect('Mapcomp Zoom')('Slider');",
+                    "var s = Math.max(25, Math.min(200, 180 - (z - 3) * 14));",
+                    "[s, s];"
+                ].join("\n");
+
+                app.endUndoGroup();
+                return JSON.stringify({
+                    ok: true,
+                    message: "Köşe Haritası (LOCATOR_INSET_FRAME & LOCATOR_TARGET_BOX) oluşturuldu ve ana kameraya bağlandı!"
+                });
+            } catch (err) {
+                app.endUndoGroup();
+                return JSON.stringify({ ok: false, error: err.toString() });
+            }
+        },
+
+        createWatermaskLayer: function (payloadJson) {
+            app.beginUndoGroup("GeoMotion: Create Watermask & Ocean Shimmer");
+            try {
+                var data = JSON.parse(payloadJson || "{}");
+                var comp = getOrCreateActiveGeoComp(data);
+                var rig = ensureMapcompRig(comp, data);
+
+                for (var i = comp.numLayers; i >= 1; i--) {
+                    if (comp.layer(i).name === "MAP_WATERMASK_MATTE") {
+                        comp.layer(i).remove();
+                    }
+                }
+
+                var waterLayer = comp.layers.addSolid(
+                    hexToRgb(data.waterColor || "#0ea5e9"),
+                    "MAP_WATERMASK_MATTE",
+                    comp.width,
+                    comp.height,
+                    1.0
+                );
+                waterLayer.comment = "Watermask Luma/Wave Shimmer Layer for Ocean & Lakes";
+                waterLayer.blendingMode = BlendingMode.SCREEN;
+                waterLayer.property("Transform").property("Opacity").setValue(22);
+
+                try {
+                    var fn = waterLayer.property("ADBE Effect Parade").addProperty("ADBE Fractal Noise");
+                    if (fn) {
+                        fn.name = "Ocean Wave Shimmer";
+                        fn.property("ADBE Fractal Noise-0004").setValue(140); // Contrast
+                        fn.property("ADBE Fractal Noise-0005").setValue(-35); // Brightness
+                        fn.property("ADBE Fractal Noise-0010").expression = "time * 45;"; // Evolution
+                    }
+                } catch (eFn) {}
+
+                // Place right above MAP_BACKGROUND_CANVAS
+                if (rig.bgCanvas) {
+                    waterLayer.moveBefore(rig.bgCanvas);
+                }
+
+                app.endUndoGroup();
+                return JSON.stringify({
+                    ok: true,
+                    message: "Su Maskesi ve Animasyonlu Okyanus Dalga Dokusu (MAP_WATERMASK_MATTE) eklendi!"
+                });
+            } catch (err) {
+                app.endUndoGroup();
+                return JSON.stringify({ ok: false, error: err.toString() });
+            }
+        },
+
+        importHeightmapAnd3DRig: function (payloadJson) {
+            app.beginUndoGroup("GeoMotion: 3D Heightmap & Displacement Rig");
+            try {
+                var data = JSON.parse(payloadJson || "{}");
+                var comp = getOrCreateActiveGeoComp(data);
+                var rig = ensureMapcompRig(comp, data);
+
+                if (data.filePath) {
+                    var f = new File(data.filePath);
+                    if (f.exists) {
+                        var io = new ImportOptions(f);
+                        var footage = app.project.importFile(io);
+                        var hmLayer = comp.layers.add(footage);
+                        hmLayer.name = "MAP_HEIGHTMAP_DISPLACEMENT";
+                        hmLayer.comment = "16-Bit Grayscale Elevation Heightmap (Compatible with FreeForm Pro, Mir, Helium & Displacement Map)";
+                        hmLayer.label = 14;
+                        attachCoplanarToAnchor(
+                            hmLayer,
+                            rig.anchor,
+                            [comp.width / 2, comp.height / 2, -0.5],
+                            [100, 100, 100]
+                        );
+                        hmLayer.property("Transform").property("Opacity").setValue(data.visibleHeightmap ? 65 : 0);
+                    }
+                }
+
+                app.endUndoGroup();
+                return JSON.stringify({
+                    ok: true,
+                    message: "Gri Tonlamalı Yükseklik Haritası (MAP_HEIGHTMAP_DISPLACEMENT) 3B Arazi Eklentileri (FreeForm Pro, Mir, Helium) için sahneye eklendi!"
+                });
+            } catch (err) {
+                app.endUndoGroup();
+                return JSON.stringify({ ok: false, error: err.toString() });
+            }
+        },
+
+        applyMapAtmosphereAndDOF: function (payloadJson) {
+            app.beginUndoGroup("GeoMotion: Atmosphere Fog, DOF & Shadows");
+            try {
+                var data = JSON.parse(payloadJson || "{}");
+                var comp = getOrCreateActiveGeoComp(data);
+                var rig = ensureMapcompRig(comp, data);
+
+                // 1. Configure 3D Camera Depth of Field (DOF)
+                if (rig.camera) {
+                    var camOpts = rig.camera.property("ADBE Camera Options Group");
+                    if (camOpts) {
+                        var enableDof = (data.enableDOF !== false);
+                        camOpts.property("ADBE Camera Depth of Field").setValue(enableDof ? 1 : 0);
+                        camOpts.property("ADBE Camera Focus Distance").setValue(1866.0);
+                        camOpts.property("ADBE Camera Aperture").setValue(parseFloat(data.aperture || 85.0));
+                        camOpts.property("ADBE Camera Blur Level").setValue(parseFloat(data.blurLevel || 120.0));
+                    }
+                }
+
+                // 2. Horizon Atmospheric Fog Layer
+                for (var i = comp.numLayers; i >= 1; i--) {
+                    if (comp.layer(i).name === "MAP_HORIZON_FOG") {
+                        comp.layer(i).remove();
+                    }
+                }
+                if (data.enableFog !== false) {
+                    var fogLayer = comp.layers.addShape();
+                    fogLayer.name = "MAP_HORIZON_FOG";
+                    fogLayer.comment = "3D Horizon Atmospheric Fog (Linked to Mapcomp Pitch)";
+                    fogLayer.property("Position").setValue([comp.width / 2, comp.height * 0.12]);
+                    var fgGrp = fogLayer.property("Contents").addProperty("ADBE Vector Group");
+                    var fgRect = fgGrp.property("Contents").addProperty("ADBE Vector Shape - Rect");
+                    fgRect.property("Size").setValue([comp.width * 1.5, comp.height * 0.35]);
+                    var fgFill = fgGrp.property("Contents").addProperty("ADBE Vector Graphic - Fill");
+                    fgFill.property("Color").setValue(hexToRgb(data.fogColor || "#0f172a"));
+                    try {
+                        var blurFx = fogLayer.property("ADBE Effect Parade").addProperty("ADBE Gaussian Blur 2");
+                        if (blurFx) blurFx.property(1).setValue(140);
+                    } catch (eB) {}
+                    fogLayer.property("Transform").property("Opacity").expression = [
+                        "function getCtrl(){ try { return thisComp.layer('MAP_CAMERA_CONTROLLER'); } catch(e){ return thisComp.layer('GEO_MAPCOMP_CONTROL'); } }",
+                        "var p = getCtrl().effect('Mapcomp Pitch')('Slider');",
+                        "linear(p, 15, 60, 0, 85);"
+                    ].join("\n");
+                }
+
+                // 3. Apply Drop Shadow to Boundary, Route & Pin layers
+                if (data.enableShadows !== false) {
+                    for (var lIdx = 1; lIdx <= comp.numLayers; lIdx++) {
+                        var lyr = comp.layer(lIdx);
+                        var ln = lyr.name;
+                        if (ln.indexOf("BOUNDARY_") === 0 || ln.indexOf("ROUTE_") === 0 || ln.indexOf("PIN_") === 0) {
+                            try {
+                                var fxParade = lyr.property("ADBE Effect Parade");
+                                if (!fxParade.property("Drop Shadow")) {
+                                    var ds = fxParade.addProperty("ADBE Drop Shadow");
+                                    ds.property(2).setValue(145); // Opacity
+                                    ds.property(4).setValue(14);  // Distance
+                                    ds.property(5).setValue(28);  // Softness
+                                }
+                            } catch (eDs) {}
+                        }
+                    }
+                }
+
+                app.endUndoGroup();
+                return JSON.stringify({
+                    ok: true,
+                    message: "Kamera Alan Derinliği (DOF), Ufuk Sisi (MAP_HORIZON_FOG) ve Katman Gölgeleri (Drop Shadow) uygulandı!"
+                });
+            } catch (err) {
+                app.endUndoGroup();
+                return JSON.stringify({ ok: false, error: err.toString() });
+            }
+        },
+
+        applyMapColorizerTheme: function (payloadJson) {
+            app.beginUndoGroup("GeoMotion: Apply Map Colorizer Theme");
+            try {
+                var data = JSON.parse(payloadJson || "{}");
+                var comp = getOrCreateActiveGeoComp(data);
+                ensureMapcompRig(comp, data);
+
+                for (var i = comp.numLayers; i >= 1; i--) {
+                    if (comp.layer(i).name === "MAP_STYLE_COLORIZER") {
+                        comp.layer(i).remove();
+                    }
+                }
+
+                var adj = comp.layers.addSolid([1, 1, 1], "MAP_STYLE_COLORIZER", comp.width, comp.height, 1.0);
+                adj.adjustmentLayer = true;
+                adj.comment = "Custom Color Palette Theme for Map Imagery (Tritone / Tint)";
+                adj.label = 12;
+
+                // Move right above map tile layers so pins/routes stay in their original vivid colors!
+                for (var j = 1; j <= comp.numLayers; j++) {
+                    var nm = comp.layer(j).name;
+                    if (nm.indexOf("MAP_TILES_") === 0 || nm.indexOf("MAPCOMP_ATLAS_") === 0 || nm === "MAP_BACKGROUND_CANVAS") {
+                        adj.moveBefore(comp.layer(j));
+                        break;
+                    }
+                }
+
+                try {
+                    var tritone = adj.property("ADBE Effect Parade").addProperty("ADBE Tritone");
+                    if (tritone) {
+                        tritone.property(1).setValue(hexToRgb(data.highlightColor || "#e2e8f0")); // Highlights (Roads/Borders)
+                        tritone.property(2).setValue(hexToRgb(data.landColor || "#1e293b"));      // Midtones (Land)
+                        tritone.property(3).setValue(hexToRgb(data.waterColor || "#090d16"));     // Shadows (Ocean/Water)
+                        tritone.property(4).setValue(parseFloat(data.blendAmount || 20));         // Blend with original (%)
+                    }
+                } catch (eTri) {
+                    try {
+                        var tint = adj.property("ADBE Effect Parade").addProperty("ADBE Tint");
+                        if (tint) {
+                            tint.property(1).setValue(hexToRgb(data.waterColor || "#090d16"));
+                            tint.property(2).setValue(hexToRgb(data.landColor || "#38bdf8"));
+                            tint.property(3).setValue(parseFloat(data.blendAmount || 75));
+                        }
+                    } catch (eTint) {}
+                }
+
+                app.endUndoGroup();
+                return JSON.stringify({
+                    ok: true,
+                    message: "Özel Harita Renk Paleti (MAP_STYLE_COLORIZER) uygulandı!"
+                });
+            } catch (err) {
+                app.endUndoGroup();
+                return JSON.stringify({ ok: false, error: err.toString() });
+            }
+        },
+
+        georeferenceSelectedLayer: function (payloadJson) {
+            app.beginUndoGroup("GeoMotion: Position Layer by Two Geo-Points");
+            try {
+                var data = JSON.parse(payloadJson || "{}");
+                var comp = getOrCreateActiveGeoComp(data);
+                var rig = ensureMapcompRig(comp, data);
+
+                var target = (comp.selectedLayers && comp.selectedLayers.length > 0) ? comp.selectedLayers[0] : null;
+                if (!target) {
+                    target = comp.layers.addSolid([0.2, 0.6, 0.9], "GEOREFERENCED_MAP_OVERLAY", 800, 600, 1.0);
+                    target.property("Transform").property("Opacity").setValue(65);
+                }
+
+                var lat1 = parseFloat(data.lat1 || 42.0);
+                var lon1 = parseFloat(data.lon1 || 26.0);
+                var lat2 = parseFloat(data.lat2 || 36.0);
+                var lon2 = parseFloat(data.lon2 || 45.0);
+
+                var p1 = latLonToCompXY(lat1, lon1, rig.refLat, rig.refLon, rig.refZoom, comp.width, comp.height);
+                var p2 = latLonToCompXY(lat2, lon2, rig.refLat, rig.refLon, rig.refZoom, comp.width, comp.height);
+
+                var centerX = (p1[0] + p2[0]) / 2.0;
+                var centerY = (p1[1] + p2[1]) / 2.0;
+                var spanW = Math.max(20, Math.abs(p2[0] - p1[0]));
+                var lyrW = target.width || 800;
+                var scalePct = (spanW / lyrW) * 100.0;
+
+                target.comment = "Georeferenced between (" + lat1 + "," + lon1 + ") and (" + lat2 + "," + lon2 + ")";
+                attachCoplanarToAnchor(target, rig.anchor, [centerX, centerY, -1.5], [scalePct, scalePct, 100]);
+
+                app.endUndoGroup();
+                return JSON.stringify({
+                    ok: true,
+                    layerName: target.name,
+                    message: "'" + target.name + "' katmanı 2 Coğrafi Koordinat Noktasına (Georeference) göre haritaya tam ölçekli yerleştirildi!"
+                });
+            } catch (err) {
+                app.endUndoGroup();
+                return JSON.stringify({ ok: false, error: err.toString() });
+            }
+        },
+
+        staggerMapFeatureLayers: function (payloadJson) {
+            app.beginUndoGroup("GeoMotion: Time-Series Stagger Animation");
+            try {
+                var data = JSON.parse(payloadJson || "{}");
+                var comp = getOrCreateActiveGeoComp(data);
+                var stepSec = parseFloat(data.stepSec || 0.4);
+                var startT = comp.time;
+                var idx = 0;
+
+                for (var i = comp.numLayers; i >= 1; i--) {
+                    var l = comp.layer(i);
+                    var nm = l.name;
+                    if (nm.indexOf("BOUNDARY_") === 0 || nm.indexOf("PIN_") === 0 || nm.indexOf("ROUTE_") === 0 || nm.indexOf("DATA_STYLE_") === 0 || nm.indexOf("FEATURE_") === 0) {
+                        var tIn = startT + idx * stepSec;
+                        l.inPoint = tIn;
+                        var op = l.property("Transform").property("Opacity");
+                        if (op && op.numKeys === 0) {
+                            op.setValueAtTime(tIn, 0);
+                            op.setValueAtTime(tIn + 0.35, 100);
+                            applyEasyEase(op);
+                        }
+                        idx++;
+                    }
+                }
+
+                app.endUndoGroup();
+                return JSON.stringify({
+                    ok: true,
+                    count: idx,
+                    message: idx + " adet coğrafi katman Zaman Serisi (Time-Series: " + stepSec + "s aralıkla) olarak sıraya dizildi!"
                 });
             } catch (err) {
                 app.endUndoGroup();

@@ -1304,6 +1304,83 @@
             settings.setKeyframe = false;
             callHost("setMapcompViewKeyframe", settings);
         });
+
+        // Interactive Right-Click Drag for 3D Pitch & Bearing (GEOlayers 3 standard)
+        var mapEl = document.getElementById("leafletMap");
+        if (mapEl) {
+            var isRightDragging = false;
+            var rStartX = 0, rStartY = 0, rStartPitch = 0, rStartBearing = 0;
+            mapEl.addEventListener("contextmenu", function (ev) { ev.preventDefault(); });
+            mapEl.addEventListener("mousedown", function (ev) {
+                if (ev.button === 2) {
+                    ev.preventDefault();
+                    isRightDragging = true;
+                    rStartX = ev.clientX;
+                    rStartY = ev.clientY;
+                    rStartPitch = parseFloat(document.getElementById("inpViewPitch").value) || 0;
+                    rStartBearing = parseFloat(document.getElementById("inpViewBearing").value) || 0;
+                }
+            });
+            window.addEventListener("mousemove", function (ev) {
+                if (!isRightDragging) return;
+                var dx = ev.clientX - rStartX;
+                var dy = rStartY - ev.clientY;
+                var newPitch = Math.max(0, Math.min(60, Math.round(rStartPitch + dy * 0.35)));
+                var newBearing = Math.round(rStartBearing + dx * 0.6);
+                if (newBearing > 180) newBearing -= 360;
+                if (newBearing < -180) newBearing += 360;
+                document.getElementById("inpViewPitch").value = newPitch;
+                document.getElementById("inpViewBearing").value = newBearing;
+                updateMapPerspectivePreview();
+            });
+            window.addEventListener("mouseup", function (ev) {
+                if (isRightDragging && ev.button === 2) {
+                    isRightDragging = false;
+                    if (liveLinkEnabled) {
+                        var s = getMapcompSettings();
+                        s.setKeyframe = false;
+                        callHost("setMapcompViewKeyframe", s);
+                    }
+                }
+            });
+        }
+
+        // Click-to-Select Feature on Map (Reverse Geocode Polygon Picker)
+        map.on("click", function (ev) {
+            if (!window.__pickFeatureOnMapMode) return;
+            var lat = ev.latlng.lat;
+            var lon = ev.latlng.lng;
+            var zoomLvl = Math.min(14, Math.max(3, Math.round(map.getZoom())));
+            setStatus("🎯 Haritadan bölge seçiliyor (" + lat.toFixed(3) + ", " + lon.toFixed(3) + ")...");
+            var revUrl = "https://nominatim.openstreetmap.org/reverse?format=json&lat=" + lat + "&lon=" + lon + "&polygon_geojson=1&zoom=" + zoomLvl;
+            fetch(revUrl, { headers: { "Accept-Language": currentLang || "tr" } })
+                .then(function (r) { return r.json(); })
+                .then(function (item) {
+                    if (!item || !item.display_name) {
+                        setStatus("Seçilen noktada idari sınır bulunamadı.", true);
+                        return;
+                    }
+                    var shortName = item.name || item.display_name.split(",")[0];
+                    var extracted = item.geojson ? extractPathsFromGeoJSON(item.geojson) : { paths: [], closed: true };
+                    var feat = {
+                        id: "pick_" + Date.now(),
+                        name: shortName,
+                        type: extracted.paths.length ? "PICKED POLYGON" : "PICKED POINT",
+                        lat: parseFloat(item.lat || lat),
+                        lon: parseFloat(item.lon || lon),
+                        zoom: map.getZoom(),
+                        geojson: item.geojson || null,
+                        polygons: extracted.paths,
+                        closed: extracted.closed
+                    };
+                    featureCollection.unshift(feat);
+                    selectFeature(feat.id, false);
+                    setStatus("🎯 Haritadan seçildi ve Feature Collection'a eklendi: " + shortName);
+                })
+                .catch(function (err) {
+                    setStatus("Reverse Geocode hatası: " + err.message, true);
+                });
+        });
     }
 
     function switchTileProvider(providerKey) {
@@ -1648,8 +1725,9 @@
         });
     }
 
-    function finalizeMapcompTiles() {
+    function finalizeMapcompTiles(singleFrame) {
         var settings = getMapcompSettings();
+        settings.singleFrame = !!singleFrame;
         var providerKey = document.getElementById("tileProviderSelect").value || "carto_dark";
         var provider = TILE_PROVIDERS[providerKey] || TILE_PROVIDERS.carto_dark;
         if (provider.requiresKey && !maptilerApiKey) {
@@ -2016,9 +2094,13 @@
         var bbox = b.getSouth().toFixed(4) + "," + b.getWest().toFixed(4) + "," + b.getNorth().toFixed(4) + "," + b.getEast().toFixed(4);
         var query = "";
         var labelName = "";
+        var isBuilding = (kind === "buildings");
         if (kind === "roads") {
             query = '[out:json][timeout:15];(way["highway"~"motorway|trunk|primary"](' + bbox + '););out geom 60;';
             labelName = "OSM_Highways";
+        } else if (isBuilding) {
+            query = '[out:json][timeout:15];(way["building"](' + bbox + '););out geom 80;';
+            labelName = "OSM_3D_Buildings";
         } else {
             query = '[out:json][timeout:15];(way["waterway"~"river|canal"](' + bbox + '););out geom 60;';
             labelName = "OSM_Waterways";
@@ -2032,41 +2114,83 @@
                 var elements = data.elements || [];
                 var paths = [];
                 elements.forEach(function (el) {
-                    if (el.geometry && el.geometry.length >= 2) {
+                    if (el.geometry && el.geometry.length >= (isBuilding ? 3 : 2)) {
                         var ring = el.geometry.map(function (pt) { return [pt.lon, pt.lat]; });
                         paths.push(ring);
                     }
                 });
                 if (!paths.length) {
-                    setStatus("Bu görünümde " + labelName + " bulunamadı (Daha yakın bir bölge deneyin).", true);
+                    setStatus("Bu görünümde " + labelName + " bulunamadı (Binalar için Z:15+ yakınlaşın).", true);
                     return;
                 }
                 var c = map.getCenter();
                 var geojsonObj = {
-                    type: "MultiLineString",
+                    type: isBuilding ? "MultiPolygon" : "MultiLineString",
                     coordinates: paths
                 };
                 var feat = {
                     id: "osm_" + Date.now(),
                     name: labelName + " (" + paths.length + ")",
-                    type: "OSM LINE",
+                    type: isBuilding ? "OSM 3D BUILDINGS" : "OSM LINE",
                     lat: c.lat,
                     lon: c.lng,
                     zoom: map.getZoom(),
                     geojson: geojsonObj,
                     polygons: paths,
-                    closed: false
+                    closed: isBuilding,
+                    forceExtrude: isBuilding ? 38 : 0
                 };
                 featureCollection.unshift(feat);
                 selectFeature(feat.id, false);
                 setStatus(paths.length + " adet " + labelName + " vektörü Feature Collection'a eklendi!");
+                if (isBuilding) {
+                    drawFeatureInAE(feat);
+                }
             })
             .catch(function (err) {
                 setStatus("Overpass API Hatası: " + err.message, true);
             });
     }
 
-    function drawFeatureInAE(feat) {
+    // Ramer-Douglas-Peucker (RDP) polygon simplification for AE Shape Layer performance
+    function simplifyRingRDP(points, epsilon) {
+        if (!points || points.length <= 4 || !epsilon || epsilon <= 0) return points;
+        function sqSegDist(p, p1, p2) {
+            var x = p1[0], y = p1[1], dx = p2[0] - x, dy = p2[1] - y;
+            if (dx !== 0 || dy !== 0) {
+                var t = ((p[0] - x) * dx + (p[1] - y) * dy) / (dx * dx + dy * dy);
+                if (t > 1) { x = p2[0]; y = p2[1]; }
+                else if (t > 0) { x += dx * t; y += dy * t; }
+            }
+            dx = p[0] - x;
+            dy = p[1] - y;
+            return dx * dx + dy * dy;
+        }
+        var sqEps = epsilon * epsilon;
+        function rdpStep(pts, first, last, simplified) {
+            var maxSqDist = sqEps;
+            var index = -1;
+            for (var i = first + 1; i < last; i++) {
+                var sqDist = sqSegDist(pts[i], pts[first], pts[last]);
+                if (sqDist > maxSqDist) {
+                    index = i;
+                    maxSqDist = sqDist;
+                }
+            }
+            if (maxSqDist > sqEps && index !== -1) {
+                if (index - first > 1) rdpStep(pts, first, index, simplified);
+                simplified.push(pts[index]);
+                if (last - index > 1) rdpStep(pts, index, last, simplified);
+            }
+        }
+        var last = points.length - 1;
+        var out = [points[0]];
+        rdpStep(points, 0, last, out);
+        out.push(points[last]);
+        return out.length >= 3 ? out : points;
+    }
+
+    function drawFeatureInAE(feat, customColorOverride) {
         if (!feat) return;
         if (!feat.polygons || feat.polygons.length === 0) {
             downloadAndAddFeature(feat.query || feat.name, true);
@@ -2074,15 +2198,21 @@
         }
         var payload = getMapcompSettings();
         var style = getActiveShapeStyle();
+        var simpEl = document.getElementById("inpSimplifyTolerance");
+        var tol = simpEl ? (parseFloat(simpEl.value) || 0) : 0;
+        var polys = feat.polygons;
+        if (tol > 0) {
+            polys = polys.map(function (ring) { return simplifyRingRDP(ring, tol); });
+        }
         payload.name = feat.name.replace(/\s+/g, "_");
-        payload.polygons = feat.polygons;
+        payload.polygons = polys;
         payload.closed = (feat.closed !== false);
         payload.fillEnabled = (feat.closed !== false);
-        payload.fillColor = style.fillColor;
+        payload.fillColor = customColorOverride || style.fillColor;
         payload.strokeColor = style.strokeColor;
         payload.strokeWidth = style.strokeWidth;
         payload.fillOpacity = style.fillOpacity;
-        payload.extrudeDepth = style.extrudeDepth;
+        payload.extrudeDepth = feat.forceExtrude || style.extrudeDepth;
         payload.animDuration = style.animDuration;
         payload.animateTrim = style.animateTrim;
         payload.dashed = style.dashed;
@@ -2904,21 +3034,147 @@
             fetchOverpassVectorsInView("rivers");
         });
 
+        var btnOverpassBuildings = document.getElementById("btnOverpassBuildings");
+        if (btnOverpassBuildings) {
+            btnOverpassBuildings.addEventListener("click", function () {
+                fetchOverpassVectorsInView("buildings");
+            });
+        }
+
+        var btnFinalizeOneFrame = document.getElementById("btnFinalizeOneFrame");
+        if (btnFinalizeOneFrame) {
+            btnFinalizeOneFrame.addEventListener("click", function () {
+                setStatus("⚡ Finalize 1-Frame (Sadece aktif kare için yüksek çözünürlüklü harita işleniyor)...");
+                finalizeMapcompTiles(true);
+            });
+        }
+
+        var btnPickOnMap = document.getElementById("btnPickFeatureOnMap");
+        if (btnPickOnMap) {
+            btnPickOnMap.addEventListener("click", function () {
+                window.__pickFeatureOnMapMode = !window.__pickFeatureOnMapMode;
+                btnPickOnMap.style.background = window.__pickFeatureOnMapMode ? "rgba(56,189,248,0.28)" : "";
+                btnPickOnMap.style.borderColor = window.__pickFeatureOnMapMode ? "#38bdf8" : "";
+                setStatus(window.__pickFeatureOnMapMode
+                    ? "🎯 Haritadan Seçim Modu AKTİF: Herhangi bir ülke/şehir/bölge üzerine tıklayın."
+                    : "🎯 Haritadan Seçim Modu kapatıldı.");
+            });
+        }
+
+        function triggerCreateScaleAndCompass() {
+            callHost("createScaleBarAndCompass", getMapcompSettings());
+        }
+        var btnAddScale = document.getElementById("btnAddScaleAndCompass");
+        if (btnAddScale) btnAddScale.addEventListener("click", triggerCreateScaleAndCompass);
+        var btnTabAddScale = document.getElementById("btnTabAddScaleCompass");
+        if (btnTabAddScale) btnTabAddScale.addEventListener("click", triggerCreateScaleAndCompass);
+
+        function triggerCreateLocatorInset() {
+            callHost("createLocatorInsetMap", getMapcompSettings());
+        }
+        var btnAddLoc = document.getElementById("btnAddLocatorInset");
+        if (btnAddLoc) btnAddLoc.addEventListener("click", triggerCreateLocatorInset);
+        var btnTabAddLoc = document.getElementById("btnTabAddLocator");
+        if (btnTabAddLoc) btnTabAddLoc.addEventListener("click", triggerCreateLocatorInset);
+
         document.getElementById("inpImportGeoJSONFile").addEventListener("change", function (ev) {
             var file = ev.target.files && ev.target.files[0];
             if (!file) return;
+            var fname = file.name || "Imported";
+            var ext = fname.split(".").pop().toLowerCase();
             var reader = new FileReader();
             reader.onload = function (e) {
                 try {
-                    var parsed = JSON.parse(e.target.result);
+                    var raw = e.target.result;
+                    var c = map.getCenter();
+                    if (ext === "gpx" || ext === "kml") {
+                        var parser = new DOMParser();
+                        var xml = parser.parseFromString(raw, "text/xml");
+                        var pts = xml.querySelectorAll("trkpt, rtept, wpt");
+                        var ring = [];
+                        for (var i = 0; i < pts.length; i++) {
+                            var latAttr = parseFloat(pts[i].getAttribute("lat"));
+                            var lonAttr = parseFloat(pts[i].getAttribute("lon"));
+                            if (!isNaN(latAttr) && !isNaN(lonAttr)) {
+                                ring.push([lonAttr, latAttr]);
+                            }
+                        }
+                        if (!ring.length) {
+                            var coordsTags = xml.querySelectorAll("coordinates");
+                            for (var j = 0; j < coordsTags.length; j++) {
+                                var tuples = coordsTags[j].textContent.trim().split(/\s+/);
+                                tuples.forEach(function (t) {
+                                    var parts = t.split(",");
+                                    if (parts.length >= 2) {
+                                        var ln = parseFloat(parts[0]), lt = parseFloat(parts[1]);
+                                        if (!isNaN(ln) && !isNaN(lt)) ring.push([ln, lt]);
+                                    }
+                                });
+                            }
+                        }
+                        if (!ring.length) throw new Error("GPX/KML içinde geçerli koordinat bulunamadı.");
+                        var gpxFeat = {
+                            id: "gpx_" + Date.now(),
+                            name: fname.replace(/\.(gpx|kml)$/i, ""),
+                            type: "GPX TRACK",
+                            lat: ring[0][1],
+                            lon: ring[0][0],
+                            zoom: 11,
+                            polygons: [ring],
+                            closed: false
+                        };
+                        featureCollection.unshift(gpxFeat);
+                        selectFeature(gpxFeat.id, true);
+                        setStatus("GPX/KML rotası yüklendi: " + gpxFeat.name + " (" + ring.length + " nokta)");
+                        return;
+                    }
+                    if (ext === "csv" || ext === "tsv") {
+                        var lines = raw.trim().split(/\r?\n/);
+                        var sep = ext === "tsv" ? "\t" : ",";
+                        var csvRing = [];
+                        var chartLines = [];
+                        lines.forEach(function (line, idx) {
+                            var cols = line.split(sep).map(function (s) { return s.trim(); });
+                            if (cols.length >= 3) {
+                                var n = cols[0];
+                                var lt = parseFloat(cols[1]);
+                                var ln = parseFloat(cols[2]);
+                                var val = parseFloat(cols[3] || "100");
+                                var col = cols[4] || "#38bdf8";
+                                if (!isNaN(lt) && !isNaN(ln)) {
+                                    csvRing.push([ln, lt]);
+                                    chartLines.push(n + "," + lt + "," + ln + "," + (isNaN(val) ? 100 : val) + "," + col);
+                                    var ptFeat = {
+                                        id: "csv_" + Date.now() + "_" + idx,
+                                        name: n || ("Point_" + idx),
+                                        type: "CSV POINT",
+                                        lat: lt,
+                                        lon: ln,
+                                        value: isNaN(val) ? 100 : val,
+                                        zoom: 9,
+                                        polygons: [],
+                                        closed: false
+                                    };
+                                    featureCollection.unshift(ptFeat);
+                                }
+                            }
+                        });
+                        if (chartLines.length) {
+                            var chartArea = document.getElementById("dataChartTextarea");
+                            if (chartArea) chartArea.value = chartLines.join("\n");
+                        }
+                        renderFeatureCollectionList();
+                        setStatus("CSV/TSV veri tablosu yüklendi (" + csvRing.length + " coğrafi kayıt).");
+                        return;
+                    }
+                    var parsed = JSON.parse(raw);
                     var geom = parsed.type === "FeatureCollection" && parsed.features && parsed.features[0]
                         ? parsed.features[0].geometry
                         : (parsed.type === "Feature" ? parsed.geometry : parsed);
                     var extracted = extractPathsFromGeoJSON(geom);
-                    var c = map.getCenter();
                     var feat = {
                         id: "file_" + Date.now(),
-                        name: file.name.replace(/\.(geo)?json$/i, ""),
+                        name: fname.replace(/\.(geo)?json$/i, ""),
                         type: extracted.closed ? "GEOJSON" : "LINE",
                         lat: c.lat,
                         lon: c.lng,
@@ -2931,11 +3187,41 @@
                     selectFeature(feat.id, true);
                     setStatus("GeoJSON dosyası yüklendi: " + feat.name);
                 } catch (err) {
-                    setStatus("GeoJSON ayrıştırma hatası: " + err.message, true);
+                    setStatus("Dosya ayrıştırma hatası: " + err.message, true);
                 }
             };
             reader.readAsText(file);
         });
+
+        var btnMerge = document.getElementById("btnMergeFeatures");
+        if (btnMerge) {
+            btnMerge.addEventListener("click", function () {
+                var polyFeats = featureCollection.filter(function (f) { return f.polygons && f.polygons.length > 0; });
+                if (polyFeats.length < 2) {
+                    setStatus("Birleştirmek (Merge) için listede en az 2 indirilmiş poligon/hat bulunmalıdır.", true);
+                    return;
+                }
+                var mergedPolys = [];
+                var names = [];
+                polyFeats.forEach(function (f) {
+                    mergedPolys = mergedPolys.concat(f.polygons);
+                    names.push(f.name.split(" ")[0]);
+                });
+                var mergedFeat = {
+                    id: "merged_" + Date.now(),
+                    name: "Merged_" + names.slice(0, 3).join("_"),
+                    type: "MERGED MULTI",
+                    lat: polyFeats[0].lat,
+                    lon: polyFeats[0].lon,
+                    zoom: polyFeats[0].zoom || 6,
+                    polygons: mergedPolys,
+                    closed: true
+                };
+                featureCollection.unshift(mergedFeat);
+                selectFeature(mergedFeat.id, true);
+                setStatus("🔗 " + polyFeats.length + " katman tek bir Multi-Polygon olarak birleştirildi: " + mergedFeat.name);
+            });
+        }
 
         document.getElementById("btnDrawSelectedFeature").addEventListener("click", function () {
             var feat = featureCollection.find(function (f) { return f.id === selectedFeatureId; });
@@ -3036,6 +3322,8 @@
                         payload.duration = duration;
                         payload.dashed = dashed;
                         payload.addHeadMarker = addHead;
+                        var headSel = document.getElementById("routeHeadStyleSelect");
+                        payload.headStyle = headSel ? headSel.value : "arrow";
                         payload.cameraFollowRoute = camFollow;
                         callHost("drawAnimatedRoute", payload);
                     }
@@ -3043,6 +3331,87 @@
                 .catch(function (err) {
                     setStatus("Route Error: " + err.message, true);
                 });
+        }
+
+        // Choropleth Mapcomp & Time-Series Stagger Bindings
+        function interpolateHex(c1, c2, t) {
+            var h1 = (c1 || "#0284c7").replace("#", "");
+            var h2 = (c2 || "#ef4444").replace("#", "");
+            var r1 = parseInt(h1.substring(0, 2), 16) || 0, g1 = parseInt(h1.substring(2, 4), 16) || 0, b1 = parseInt(h1.substring(4, 6), 16) || 0;
+            var r2 = parseInt(h2.substring(0, 2), 16) || 255, g2 = parseInt(h2.substring(2, 4), 16) || 68, b2 = parseInt(h2.substring(4, 6), 16) || 68;
+            var r = Math.round(r1 + (r2 - r1) * t);
+            var g = Math.round(g1 + (g2 - g1) * t);
+            var b = Math.round(b1 + (b2 - b1) * t);
+            return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+        }
+
+        var btnChoropleth = document.getElementById("btnDrawChoropleth");
+        if (btnChoropleth) {
+            btnChoropleth.addEventListener("click", function () {
+                var polyFeats = featureCollection.filter(function (f) { return f.polygons && f.polygons.length > 0; });
+                if (!polyFeats.length) {
+                    setStatus("Choropleth haritası için önce birkaç ülke/il poligonu indirin.", true);
+                    return;
+                }
+                var cLow = document.getElementById("choroColorLow").value || "#0284c7";
+                var cHigh = document.getElementById("choroColorHigh").value || "#ef4444";
+                polyFeats.forEach(function (f, idx) {
+                    var t = polyFeats.length > 1 ? (idx / (polyFeats.length - 1)) : 0.5;
+                    var gradColor = interpolateHex(cLow, cHigh, t);
+                    drawFeatureInAE(f, gradColor);
+                });
+                setStatus("🌡️ Choropleth harita renklendirmesi (" + polyFeats.length + " bölge) AE'ye aktarıldı!");
+            });
+        }
+
+        var btnStagger = document.getElementById("btnStaggerTimeSeries");
+        if (btnStagger) {
+            btnStagger.addEventListener("click", function () {
+                var settings = getMapcompSettings();
+                settings.stepSec = parseFloat(document.getElementById("inpTimeSeriesStep").value) || 0.4;
+                callHost("staggerMapFeatureLayers", settings);
+            });
+        }
+
+        // Map Imagery Colorizer, Watermask & 3D Atmosphere/DOF Bindings
+        var btnColorizer = document.getElementById("btnApplyMapColorizer");
+        if (btnColorizer) {
+            btnColorizer.addEventListener("click", function () {
+                var settings = getMapcompSettings();
+                settings.waterColor = document.getElementById("themeWaterColor").value || "#081426";
+                settings.landColor = document.getElementById("themeLandColor").value || "#1e293b";
+                settings.highlightColor = document.getElementById("themeHighlightColor").value || "#38bdf8";
+                callHost("applyMapColorizerTheme", settings);
+            });
+        }
+
+        var btnWatermask = document.getElementById("btnAddWatermask");
+        if (btnWatermask) {
+            btnWatermask.addEventListener("click", function () {
+                callHost("createWatermaskLayer", getMapcompSettings());
+            });
+        }
+
+        var btnAtmosDOF = document.getElementById("btnApplyAtmosphereDOF");
+        if (btnAtmosDOF) {
+            btnAtmosDOF.addEventListener("click", function () {
+                callHost("applyMapAtmosphereAndDOF", getMapcompSettings());
+            });
+        }
+
+        // 2-Point Georeference Image / Layer Binding
+        var btnGeoref = document.getElementById("btnGeoreferenceLayer");
+        if (btnGeoref) {
+            btnGeoref.addEventListener("click", function () {
+                var p1Str = (document.getElementById("inpGeoPoint1").value || "41.05, 28.95").split(",");
+                var p2Str = (document.getElementById("inpGeoPoint2").value || "40.98, 29.08").split(",");
+                var settings = getMapcompSettings();
+                settings.lat1 = parseFloat(p1Str[0]) || 41.05;
+                settings.lon1 = parseFloat(p1Str[1]) || 28.95;
+                settings.lat2 = parseFloat(p2Str[0]) || 40.98;
+                settings.lon2 = parseFloat(p2Str[1]) || 29.08;
+                callHost("georeferenceSelectedLayer", settings);
+            });
         }
 
         document.getElementById("btnCalcRoutePreview").addEventListener("click", function () {
@@ -3112,6 +3481,153 @@
             payload.items = items;
             callHost("createGeoDataChart", payload);
         });
+
+        // 3D Landscape Heightmap Rig (Helium / FreeForm Pro / Mir / Plexus Grayscale DEM Displacement)
+        var btnHeightmapRig = document.getElementById("btnExportHeightmapRig");
+        if (btnHeightmapRig) {
+            btnHeightmapRig.addEventListener("click", function () {
+                var bounds = map.getBounds();
+                var gridCount = 9;
+                var lats = [], lons = [];
+                var s = bounds.getSouth(), n = bounds.getNorth(), w = bounds.getWest(), e = bounds.getEast();
+                for (var r = 0; r < gridCount; r++) {
+                    for (var c = 0; c < gridCount; c++) {
+                        lats.push((n - (r / (gridCount - 1)) * (n - s)).toFixed(4));
+                        lons.push((w + (c / (gridCount - 1)) * (e - w)).toFixed(4));
+                    }
+                }
+                setStatus("🗻 Open-Meteo DEM üzerinden Heightmap (Yükseklik Haritası) oluşturuluyor...");
+                fetch("https://api.open-meteo.com/v1/elevation?latitude=" + lats.join(",") + "&longitude=" + lons.join(","))
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        var elevs = data.elevation || [];
+                        var minE = 99999, maxE = -99999;
+                        elevs.forEach(function (v) {
+                            if (v < minE) minE = v;
+                            if (v > maxE) maxE = v;
+                        });
+                        if (maxE <= minE) maxE = minE + 500;
+
+                        // Render smooth 1024x1024 Grayscale Heightmap Canvas
+                        var smallCv = document.createElement("canvas");
+                        smallCv.width = gridCount;
+                        smallCv.height = gridCount;
+                        var sCtx = smallCv.getContext("2d");
+                        var imgData = sCtx.createImageData(gridCount, gridCount);
+                        for (var i = 0; i < gridCount * gridCount; i++) {
+                            var val = elevs[i] || 0;
+                            var norm = Math.max(0, Math.min(255, Math.round(((val - minE) / (maxE - minE)) * 255)));
+                            imgData.data[i * 4] = norm;
+                            imgData.data[i * 4 + 1] = norm;
+                            imgData.data[i * 4 + 2] = norm;
+                            imgData.data[i * 4 + 3] = 255;
+                        }
+                        sCtx.putImageData(imgData, 0, 0);
+
+                        var hiCv = document.createElement("canvas");
+                        hiCv.width = 1024;
+                        hiCv.height = 1024;
+                        var hCtx = hiCv.getContext("2d");
+                        hCtx.imageSmoothingEnabled = true;
+                        hCtx.imageSmoothingQuality = "high";
+                        hCtx.drawImage(smallCv, 0, 0, 1024, 1024);
+
+                        if (typeof window.require === "function") {
+                            var fs = window.require("fs");
+                            var path = window.require("path");
+                            var os = window.require("os");
+                            var dir = path.join(os.tmpdir(), "GeoMotion_Heightmaps");
+                            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+                            var fpath = path.join(dir, "Heightmap_DEM_" + Date.now() + ".png");
+                            var b64 = hiCv.toDataURL("image/png").replace(/^data:image\/png;base64,/, "");
+                            fs.writeFileSync(fpath, Buffer.from(b64, "base64"));
+
+                            var payload = getMapcompSettings();
+                            payload.filePath = fpath;
+                            payload.visibleHeightmap = true;
+                            callHost("importHeightmapAnd3DRig", payload);
+                        } else {
+                            setStatus("Heightmap oluşturuldu (Min: " + minE + "m, Max: " + maxE + "m).");
+                        }
+                    })
+                    .catch(function (err) {
+                        setStatus("Heightmap DEM hatası: " + err.message, true);
+                    });
+            });
+        }
+
+        // Custom TMS/XYZ Server Profiles & Cache Manager Bindings
+        var btnAddCustomSrv = document.getElementById("btnAddCustomTileServer");
+        if (btnAddCustomSrv) {
+            btnAddCustomSrv.addEventListener("click", function () {
+                var srvName = (document.getElementById("inpCustomTileName").value || "Custom TMS").trim();
+                var srvUrl = (document.getElementById("inpCustomTileUrl").value || "").trim();
+                if (!srvUrl || srvUrl.indexOf("{z}") === -1) {
+                    setStatus("Lütfen {z}/{x}/{y} içeren geçerli bir TMS/XYZ URL şablonu girin.", true);
+                    return;
+                }
+                var customKey = "custom_" + Date.now();
+                TILE_PROVIDERS[customKey] = {
+                    name: srvName,
+                    url: srvUrl,
+                    subdomains: "abc"
+                };
+                var sel = document.getElementById("tileProviderSelect");
+                if (sel) {
+                    var opt = document.createElement("option");
+                    opt.value = customKey;
+                    opt.textContent = srvName + " (Custom TMS)";
+                    sel.appendChild(opt);
+                    sel.value = customKey;
+                }
+                switchTileProvider(customKey);
+                setStatus("🌐 Özel Harita Sunucusu eklendi ve etkinleştirildi: " + srvName);
+            });
+        }
+
+        var btnExportSrv = document.getElementById("btnExportServerProfiles");
+        if (btnExportSrv) {
+            btnExportSrv.addEventListener("click", function () {
+                if (typeof window.require === "function") {
+                    var fs = window.require("fs");
+                    var path = window.require("path");
+                    var os = window.require("os");
+                    var outPath = path.join(os.homedir(), "Desktop", "GeoMotion_TileServers_Backup.json");
+                    fs.writeFileSync(outPath, JSON.stringify(TILE_PROVIDERS, null, 2), "utf8");
+                    setStatus("💾 Sunucu profilleri Masaüstüne dışa aktarıldı: GeoMotion_TileServers_Backup.json");
+                } else {
+                    setStatus("Sunucu profilleri panoya hazırlandı.");
+                }
+            });
+        }
+
+        var btnClearCache = document.getElementById("btnClearTileCache");
+        if (btnClearCache) {
+            btnClearCache.addEventListener("click", function () {
+                if (typeof window.require === "function") {
+                    try {
+                        var fs = window.require("fs");
+                        var path = window.require("path");
+                        var os = window.require("os");
+                        var tmp = os.tmpdir();
+                        var entries = fs.readdirSync(tmp);
+                        var removed = 0;
+                        entries.forEach(function (name) {
+                            if (name.indexOf("GeoMotion_") === 0 || name.indexOf("OpenGeoLayers_") === 0) {
+                                var full = path.join(tmp, name);
+                                fs.rmSync(full, { recursive: true, force: true });
+                                removed++;
+                            }
+                        });
+                        setStatus("🧹 Harita Önbelleği temizlendi (" + removed + " geçici atlas klasörü silindi).");
+                    } catch (e) {
+                        setStatus("Önbellek temizleme: " + e.message, true);
+                    }
+                } else {
+                    setStatus("🧹 Tarayıcı harita önbelleği sıfırlandı.");
+                }
+            });
+        }
 
         // Language Switcher Button
         var btnLang = document.getElementById("btnToggleLanguage");
