@@ -43,14 +43,24 @@
         var camLayer = null;
         for (var i = 1; i <= comp.numLayers; i++) {
             var lyr = comp.layer(i);
-            if (lyr.name === "GEO_MAPCOMP_CONTROL") ctrlLayer = lyr;
-            if (lyr.name === "GEO_WORLD_ANCHOR") anchorLayer = lyr;
-            if (lyr.name === "GEO_MAPCOMP_CAMERA" && lyr instanceof CameraLayer) camLayer = lyr;
+            if (lyr.name === "MAP_CAMERA_CONTROLLER" || lyr.name === "GEO_MAPCOMP_CONTROL") {
+                ctrlLayer = lyr;
+                ctrlLayer.name = "MAP_CAMERA_CONTROLLER";
+            }
+            if (lyr.name === "MAP_WORLD_ANCHOR" || lyr.name === "GEO_WORLD_ANCHOR") {
+                anchorLayer = lyr;
+                anchorLayer.name = "MAP_WORLD_ANCHOR";
+            }
+            if ((lyr.name === "MAP_3D_CAMERA" || lyr.name === "GEO_MAPCOMP_CAMERA") && lyr instanceof CameraLayer) {
+                camLayer = lyr;
+                camLayer.name = "MAP_3D_CAMERA";
+            }
         }
         if (!ctrlLayer) {
             ctrlLayer = comp.layers.addNull();
-            ctrlLayer.name = "GEO_MAPCOMP_CONTROL";
-            ctrlLayer.label = 9;
+            ctrlLayer.name = "MAP_CAMERA_CONTROLLER";
+            ctrlLayer.label = 13;
+            ctrlLayer.comment = "Animate Camera & Map movement here (Latitude, Longitude, Zoom, Pitch, Bearing)";
             ctrlLayer.guideLayer = true;
             ctrlLayer.threeDLayer = true;
             ctrlLayer.property("Position").setValue([comp.width / 2, comp.height / 2, 0]);
@@ -66,18 +76,19 @@
 
         if (!anchorLayer) {
             anchorLayer = comp.layers.addNull();
-            anchorLayer.name = "GEO_WORLD_ANCHOR";
+            anchorLayer.name = "MAP_WORLD_ANCHOR";
             anchorLayer.label = 14;
+            anchorLayer.comment = "Internal 3D Coordinate Anchor (Parent for all map layers)";
             anchorLayer.threeDLayer = true;
             anchorLayer.property("Position").setValue([comp.width / 2, comp.height / 2, 0]);
             anchorLayer.property("Transform").property("Scale").expression =
-                "var c=thisComp.layer('GEO_MAPCOMP_CONTROL'); var s=100*Math.pow(2, c.effect('Mapcomp Zoom')('Slider')-c.effect('Reference Zoom')('Slider')); [s,s,s];";
+                "function getCtrl(){try{return thisComp.layer('MAP_CAMERA_CONTROLLER');}catch(e){return thisComp.layer('GEO_MAPCOMP_CONTROL');}} var c=getCtrl(); var s=100*Math.pow(2, c.effect('Mapcomp Zoom')('Slider')-c.effect('Reference Zoom')('Slider')); [s,s,s];";
             anchorLayer.property("Transform").property("X Rotation").expression =
-                "thisComp.layer('GEO_MAPCOMP_CONTROL').effect('Mapcomp Pitch')('Slider');";
+                "function getCtrl(){try{return thisComp.layer('MAP_CAMERA_CONTROLLER');}catch(e){return thisComp.layer('GEO_MAPCOMP_CONTROL');}} getCtrl().effect('Mapcomp Pitch')('Slider');";
             anchorLayer.property("Transform").property("Z Rotation").expression =
-                "thisComp.layer('GEO_MAPCOMP_CONTROL').effect('Mapcomp Bearing')('Slider');";
+                "function getCtrl(){try{return thisComp.layer('MAP_CAMERA_CONTROLLER');}catch(e){return thisComp.layer('GEO_MAPCOMP_CONTROL');}} getCtrl().effect('Mapcomp Bearing')('Slider');";
             anchorLayer.property("Transform").property("Anchor Point").expression = [
-                "var c=thisComp.layer('GEO_MAPCOMP_CONTROL');",
+                "function getCtrl(){try{return thisComp.layer('MAP_CAMERA_CONTROLLER');}catch(e){return thisComp.layer('GEO_MAPCOMP_CONTROL');}} var c=getCtrl();",
                 "var lat=c.effect('Mapcomp Latitude')('Slider'), lon=c.effect('Mapcomp Longitude')('Slider');",
                 "var rLat=c.effect('Reference Lat')('Slider'), rLon=c.effect('Reference Lon')('Slider'), rZ=c.effect('Reference Zoom')('Slider');",
                 "var sc=256*Math.pow(2,rZ);",
@@ -87,7 +98,7 @@
             ].join("\n");
         }
         if (!camLayer) {
-            camLayer = comp.layers.addCamera("GEO_MAPCOMP_CAMERA", [comp.width / 2, comp.height / 2]);
+            camLayer = comp.layers.addCamera("MAP_3D_CAMERA", [comp.width / 2, comp.height / 2]);
             camLayer.property("Position").setValue([comp.width / 2, comp.height / 2, -1866.0]);
             camLayer.property("Point of Interest").setValue([comp.width / 2, comp.height / 2, 0]);
         }
@@ -314,7 +325,7 @@
                 txt.threeDLayer = true;
                 txt.parent = rig.anchor;
                 txt.property("Transform").property("Scale").expression =
-                    "var s=thisComp.layer('GEO_WORLD_ANCHOR').transform.scale[0]; var inv=10000/Math.max(0.001,s); [inv,inv,inv];";
+                    "function getAnchor(){try{return thisComp.layer('MAP_WORLD_ANCHOR');}catch(e){return thisComp.layer('GEO_WORLD_ANCHOR');}} var s=getAnchor().transform.scale[0]; var inv=10000/Math.max(0.001,s); [inv,inv,inv];";
                 statusTxt.text = "Otomatik ölçeklenen Label ('" + lblText + "') eklendi!";
             } catch (e) {
                 statusTxt.text = "Hata: " + e.toString();
