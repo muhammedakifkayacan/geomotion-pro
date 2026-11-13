@@ -416,7 +416,6 @@ var GeoMotionHost = (function () {
         } else {
             bgCanvasLayer.name = "MAP_BACKGROUND_CANVAS";
         }
-        }
         bgCanvasLayer.parent = null;
         bgCanvasLayer.threeDLayer = false;
         bgCanvasLayer.property("Position").setValue([comp.width / 2, comp.height / 2]);
