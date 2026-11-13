@@ -2151,6 +2151,210 @@
         }
     }
 
+    // =========================================================================
+    // GEOUPDATER: AUTOMATIC & ON-DEMAND GITHUB UPDATE ENGINE
+    // =========================================================================
+    var CURRENT_VERSION = "3.0.0";
+    var GeoUpdater = {
+        currentVersion: CURRENT_VERSION,
+        defaultRepo: "akifm1pro/geomotion-pro",
+        latestReleaseData: null,
+
+        getRepo: function () {
+            return localStorage.getItem("geomotion_github_repo") || this.defaultRepo;
+        },
+
+        setRepo: function (repo) {
+            repo = (repo || "").trim();
+            if (repo) {
+                localStorage.setItem("geomotion_github_repo", repo);
+            }
+        },
+
+        compareVersions: function (v1, v2) {
+            var p1 = (v1 || "").replace(/^v/, "").split(".").map(function (n) { return parseInt(n, 10) || 0; });
+            var p2 = (v2 || "").replace(/^v/, "").split(".").map(function (n) { return parseInt(n, 10) || 0; });
+            for (var i = 0; i < Math.max(p1.length, p2.length); i++) {
+                var a = p1[i] || 0;
+                var b = p2[i] || 0;
+                if (a > b) return 1;
+                if (a < b) return -1;
+            }
+            return 0;
+        },
+
+        checkUpdate: async function (silent) {
+            var self = this;
+            var repo = self.getRepo();
+            var statusLbl = document.getElementById("lblUpdateStatus");
+            if (!silent && statusLbl) {
+                statusLbl.textContent = "⏳ GitHub kontrol ediliyor...";
+                statusLbl.style.color = "#94a3b8";
+            }
+
+            try {
+                // Strategy 1: Check raw version.json (instant, no rate limits)
+                var rawUrl = "https://raw.githubusercontent.com/" + repo + "/main/version.json?t=" + Date.now();
+                var resp = await fetch(rawUrl, { cache: "no-store" });
+                if (!resp.ok) {
+                    // Strategy 2: Fallback to GitHub Releases API
+                    var apiUrl = "https://api.github.com/repos/" + repo + "/releases/latest";
+                    var apiResp = await fetch(apiUrl);
+                    if (!apiResp.ok) throw new Error("GitHub deposuna ulaşılamadı (" + (resp.status || apiResp.status) + ")");
+                    var relJson = await apiResp.json();
+                    self.processReleaseResult({
+                        version: relJson.tag_name,
+                        changelog: relJson.body,
+                        htmlUrl: relJson.html_url,
+                        downloads: {
+                            mac: (relJson.assets.find(function(a){ return a.name.endsWith('.dmg'); }) || {}).browser_download_url,
+                            win: (relJson.assets.find(function(a){ return a.name.endsWith('.exe'); }) || {}).browser_download_url
+                        }
+                    }, silent);
+                    return;
+                }
+
+                var vJson = await resp.json();
+                self.processReleaseResult(vJson, silent);
+
+            } catch (err) {
+                if (!silent && statusLbl) {
+                    statusLbl.textContent = "ℹ️ " + (err.message || "Güncelleme denetlenemedi.");
+                    statusLbl.style.color = "#94a3b8";
+                }
+            }
+        },
+
+        processReleaseResult: function (data, silent) {
+            var self = this;
+            var remoteVer = data.version || "0.0.0";
+            self.latestReleaseData = data;
+            var isNewer = self.compareVersions(remoteVer, self.currentVersion) > 0;
+
+            var statusLbl = document.getElementById("lblUpdateStatus");
+            var resultCard = document.getElementById("updateResultCard");
+            var banner = document.getElementById("glUpdateBanner");
+
+            if (isNewer) {
+                if (banner) {
+                    var lblNewVer = document.getElementById("lblUpdateNewVer");
+                    if (lblNewVer) lblNewVer.textContent = remoteVer.replace(/^v/, "");
+                    var lblDesc = document.getElementById("lblUpdateDesc");
+                    if (lblDesc) lblDesc.textContent = (data.changelog ? data.changelog.split("\n")[0] : "Yeni sürüm yayınlandı!");
+                    banner.classList.remove("hidden");
+                }
+
+                if (resultCard) {
+                    resultCard.classList.remove("hidden");
+                    var lblTitle = document.getElementById("lblFoundVerTitle");
+                    if (lblTitle) lblTitle.textContent = "v" + remoteVer.replace(/^v/, "");
+                    var lblChg = document.getElementById("lblFoundChangelog");
+                    if (lblChg) lblChg.textContent = data.changelog || "Detaylı sürüm notu bulunamadı.";
+                }
+
+                if (statusLbl) {
+                    statusLbl.textContent = "🚀 Yeni sürüm bulundu: v" + remoteVer;
+                    statusLbl.style.color = "#38bdf8";
+                }
+            } else {
+                if (!silent && statusLbl) {
+                    statusLbl.textContent = "✓ En güncel sürümü kullanıyorsunuz (v" + self.currentVersion + ").";
+                    statusLbl.style.color = "#10b981";
+                }
+                if (resultCard) resultCard.classList.add("hidden");
+            }
+        },
+
+        downloadInstaller: function () {
+            var self = this;
+            var repo = self.getRepo();
+            var isMac = (navigator.platform.toUpperCase().indexOf("MAC") >= 0);
+            var url = "https://github.com/" + repo + "/releases/latest";
+
+            if (self.latestReleaseData && self.latestReleaseData.downloads) {
+                url = isMac ? (self.latestReleaseData.downloads.mac || url) : (self.latestReleaseData.downloads.win || url);
+            }
+            if (window.cep && window.cep.util && window.cep.util.openURLInDefaultBrowser) {
+                window.cep.util.openURLInDefaultBrowser(url);
+            } else {
+                window.open(url, "_blank");
+            }
+        },
+
+        applyHotUpdate: async function () {
+            var self = this;
+            var repo = self.getRepo();
+            var statusLbl = document.getElementById("lblUpdateStatus");
+            if (statusLbl) {
+                statusLbl.textContent = "⏳ Canlı dosyalar GitHub'dan indiriliyor...";
+                statusLbl.style.color = "#f59e0b";
+            }
+
+            try {
+                if (typeof require === "function") {
+                    var fs = require("fs");
+                    var path = require("path");
+                    var https = require("https");
+                    var cs = new CSInterface();
+                    var extPath = cs.getSystemPath(SystemPath.EXTENSION);
+
+                    var filesToUpdate = [
+                        "version.json",
+                        "client/index.html",
+                        "client/js/app.js",
+                        "client/css/style.css",
+                        "host/index.jsx"
+                    ];
+
+                    var downloadFile = function (relPath) {
+                        return new Promise(function (resolve, reject) {
+                            var fileUrl = "https://raw.githubusercontent.com/" + repo + "/main/com.opengeolayers.cep/" + relPath + "?t=" + Date.now();
+                            var dest = path.join(extPath, relPath);
+                            https.get(fileUrl, function (res) {
+                                if (res.statusCode !== 200) {
+                                    resolve(false);
+                                    return;
+                                }
+                                var data = "";
+                                res.on("data", function (chunk) { data += chunk; });
+                                res.on("end", function () {
+                                    try {
+                                        fs.writeFileSync(dest, data, "utf8");
+                                        resolve(true);
+                                    } catch (e) {
+                                        reject(e);
+                                    }
+                                });
+                            }).on("error", reject);
+                        });
+                    };
+
+                    for (var i = 0; i < filesToUpdate.length; i++) {
+                        await downloadFile(filesToUpdate[i]);
+                    }
+
+                    if (statusLbl) {
+                        statusLbl.textContent = "✓ Güncelleme tamamlandı! Yeniden başlatılıyor...";
+                        statusLbl.style.color = "#10b981";
+                    }
+
+                    setTimeout(function () {
+                        location.reload();
+                    }, 1000);
+
+                } else {
+                    self.downloadInstaller();
+                }
+            } catch (err) {
+                if (statusLbl) {
+                    statusLbl.textContent = "⚠️ Canlı güncelleme hatası: " + err.message + " (Yükleyiciyi indir seçeneğini kullanabilirsiniz)";
+                    statusLbl.style.color = "#ef4444";
+                }
+                self.downloadInstaller();
+            }
+        }
+    };
+
     function bindEvents() {
         bindScrubbableLabels();
 
@@ -3221,6 +3425,62 @@
                 });
             });
         }
+
+        // =====================================================================
+        // TAB 4: ABOUT & AUTO-UPDATER BINDINGS
+        // =====================================================================
+        var inpRepo = document.getElementById("inpGithubRepo");
+        if (inpRepo) inpRepo.value = GeoUpdater.getRepo();
+
+        var btnSaveRepo = document.getElementById("btnSaveGithubRepo");
+        if (btnSaveRepo) {
+            btnSaveRepo.addEventListener("click", function () {
+                var val = (document.getElementById("inpGithubRepo").value || "").trim();
+                if (val) {
+                    GeoUpdater.setRepo(val);
+                    setStatus("GitHub deposu kaydedildi: " + val);
+                }
+            });
+        }
+
+        var btnCheckManual = document.getElementById("btnCheckUpdateManual");
+        if (btnCheckManual) {
+            btnCheckManual.addEventListener("click", function () {
+                GeoUpdater.checkUpdate(false);
+            });
+        }
+
+        var btnInstallNow = document.getElementById("btnInstallUpdateNow");
+        if (btnInstallNow) {
+            btnInstallNow.addEventListener("click", function () {
+                GeoUpdater.applyHotUpdate();
+            });
+        }
+
+        var btnDownloadPkg = document.getElementById("btnDownloadInstallerPkg");
+        if (btnDownloadPkg) {
+            btnDownloadPkg.addEventListener("click", function () {
+                GeoUpdater.downloadInstaller();
+            });
+        }
+
+        // Top Update Notification Banner
+        var btnOpenUpModal = document.getElementById("btnOpenUpdateModal");
+        if (btnOpenUpModal) {
+            btnOpenUpModal.addEventListener("click", function () {
+                openCompSettingsModal();
+                var aboutBtn = document.getElementById("cm_tab_about_btn");
+                if (aboutBtn) aboutBtn.click();
+            });
+        }
+
+        var btnDismissUp = document.getElementById("btnDismissUpdate");
+        if (btnDismissUp) {
+            btnDismissUp.addEventListener("click", function () {
+                var b = document.getElementById("glUpdateBanner");
+                if (b) b.classList.add("hidden");
+            });
+        }
     }
 
     // =========================================================================
@@ -4051,5 +4311,10 @@
         bindCopilotEvents();
         renderMapStyleGallery("all");
         updateActiveMapStylePillLabel();
+
+        // Check for updates quietly in background after 3 seconds
+        setTimeout(function () {
+            GeoUpdater.checkUpdate(true);
+        }, 3000);
     });
 })();
