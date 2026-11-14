@@ -902,11 +902,25 @@ var GeoMotionHost = (function () {
                         message: "CTI (" + t.toFixed(2) + "s) konumuna Mapcomp View Keyframe (◆) eklendi!"
                     });
                 } else {
-                    if (latProp.numKeys === 0) latProp.setValue(lat);
-                    if (lonProp.numKeys === 0) lonProp.setValue(lon);
-                    if (zoomProp.numKeys === 0) zoomProp.setValue(zoom);
-                    if (pitchProp.numKeys === 0) pitchProp.setValue(pitch);
-                    if (bearingProp.numKeys === 0) bearingProp.setValue(bearing);
+                    function liveSyncProp(prop, val) {
+                        if (prop.numKeys === 0) {
+                            prop.setValue(val);
+                        } else if (prop.numKeys === 1) {
+                            prop.setValueAtKey(1, val);
+                        } else {
+                            var nk = prop.nearestKeyIndex(t);
+                            if (Math.abs(prop.keyTime(nk) - t) < 0.15) {
+                                prop.setValueAtKey(nk, val);
+                            } else {
+                                prop.setValueAtTime(t, val);
+                            }
+                        }
+                    }
+                    liveSyncProp(latProp, lat);
+                    liveSyncProp(lonProp, lon);
+                    liveSyncProp(zoomProp, zoom);
+                    liveSyncProp(pitchProp, pitch);
+                    liveSyncProp(bearingProp, bearing);
                     app.endUndoGroup();
                     return JSON.stringify({
                         ok: true,
