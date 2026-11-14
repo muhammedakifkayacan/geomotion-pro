@@ -717,8 +717,11 @@
         var resVal = ((resEl && resEl.value) ? resEl.value : "1080x1920").split("x");
         var compW = parseInt(resVal[0], 10) || 1080;
         var compH = parseInt(resVal[1], 10) || 1920;
-        var boxH = (box && box.clientHeight > 40) ? box.clientHeight : 260;
-        var ratio = compH / boxH;
+        var boxH = (box && box.clientHeight > 40) ? box.clientHeight : 240;
+        var pitchEl = document.getElementById("inpViewPitch");
+        var pitch = pitchEl ? (parseFloat(pitchEl.value) || 0) : 0;
+        var scaleCompensate = 1 + (pitch / 160);
+        var ratio = (compH / boxH) * scaleCompensate;
         return Math.log(Math.max(1.0, ratio)) / Math.LN2;
     }
 
@@ -1305,10 +1308,14 @@
             }
         });
 
-        // Initialize 9:16 safe camera guide box matching Image 2 & 3
-        setTimeout(function () {
-            updateMapcompGuideBox(1080, 1920);
-        }, 150);
+        // Initialize safe camera guide box matching active comp resolution
+        function syncGuideToPreset() {
+            var resEl = document.getElementById("compResPreset");
+            var parts = ((resEl && resEl.value) ? resEl.value : "1920x1080").split("x");
+            updateMapcompGuideBox(parseInt(parts[0], 10) || 1920, parseInt(parts[1], 10) || 1080);
+        }
+        setTimeout(syncGuideToPreset, 150);
+        window.addEventListener("resize", syncGuideToPreset);
 
         map.on("moveend", function () {
             if (!liveLinkEnabled) return;
@@ -2020,21 +2027,31 @@
         var contW = container ? container.clientWidth : 420;
         var contH = container ? container.clientHeight : 380;
 
+        var maxW = contW * 0.88;
+        var maxH = contH * 0.86;
         var boxH, boxW;
         if (aspect < 0.9) {
             // Vertical framing (9:16 Reels / TikTok / Shorts)
-            boxH = Math.min(contH * 0.88, 380);
+            boxH = Math.min(maxH, 380);
             boxW = boxH * aspect;
+            if (boxW > maxW) {
+                boxW = maxW;
+                boxH = boxW / aspect;
+            }
             if (badge) badge.textContent = "9:16 (" + w + "\u00d7" + h + ")";
         } else if (Math.abs(aspect - 1.0) < 0.15) {
             // Square framing (1:1)
-            boxH = Math.min(contH * 0.78, contW * 0.78);
+            boxH = Math.min(maxH, maxW);
             boxW = boxH;
             if (badge) badge.textContent = "1:1 (" + w + "\u00d7" + h + ")";
         } else {
             // Landscape framing (16:9 / 4K UHD)
-            boxW = Math.min(contW * 0.88, 480);
+            boxW = Math.min(maxW, 480);
             boxH = boxW / aspect;
+            if (boxH > maxH) {
+                boxH = maxH;
+                boxW = boxH * aspect;
+            }
             if (badge) badge.textContent = "16:9 (" + w + "\u00d7" + h + ")";
         }
 
