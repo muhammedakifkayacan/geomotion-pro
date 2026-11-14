@@ -714,9 +714,9 @@
     function getPreviewToCompZoomOffset() {
         var box = document.getElementById("mapcompGuideBox");
         var resEl = document.getElementById("compResPreset");
-        var resVal = ((resEl && resEl.value) ? resEl.value : "1080x1920").split("x");
-        var compW = parseInt(resVal[0], 10) || 1080;
-        var compH = parseInt(resVal[1], 10) || 1920;
+        var resVal = ((resEl && resEl.value) ? resEl.value : "1920x1080").split("x");
+        var compW = window.__activeCompWidth || parseInt(resVal[0], 10) || 1920;
+        var compH = window.__activeCompHeight || parseInt(resVal[1], 10) || 1080;
         var boxH = (box && box.clientHeight > 40) ? box.clientHeight : 240;
         var pitchEl = document.getElementById("inpViewPitch");
         var pitch = pitchEl ? (parseFloat(pitchEl.value) || 0) : 0;
@@ -1125,6 +1125,23 @@
                     dupNameInp.value = res.name + " (Reels 9:16)";
                 }
 
+                // Sync active comp real dimensions to Guide Box & preset
+                if (res.width && res.height) {
+                    window.__activeCompWidth = parseInt(res.width, 10);
+                    window.__activeCompHeight = parseInt(res.height, 10);
+                    var presetEl = document.getElementById("compResPreset");
+                    if (presetEl) {
+                        var dimKey = window.__activeCompWidth + "x" + window.__activeCompHeight;
+                        for (var oi = 0; oi < presetEl.options.length; oi++) {
+                            if (presetEl.options[oi].value === dimKey) {
+                                presetEl.value = dimKey;
+                                break;
+                            }
+                        }
+                    }
+                    updateMapcompGuideBox(window.__activeCompWidth, window.__activeCompHeight);
+                }
+
                 // Sync allMapcomps dropdown if returned
                 if (res.allMapcomps && res.allMapcomps.length) {
                     syncMapcompDropdown(res.allMapcomps, res.name);
@@ -1310,11 +1327,20 @@
 
         // Initialize safe camera guide box matching active comp resolution
         function syncGuideToPreset() {
+            if (window.__activeCompWidth && window.__activeCompHeight) {
+                updateMapcompGuideBox(window.__activeCompWidth, window.__activeCompHeight);
+                return;
+            }
             var resEl = document.getElementById("compResPreset");
             var parts = ((resEl && resEl.value) ? resEl.value : "1920x1080").split("x");
             updateMapcompGuideBox(parseInt(parts[0], 10) || 1920, parseInt(parts[1], 10) || 1080);
         }
-        setTimeout(syncGuideToPreset, 150);
+        setTimeout(function () {
+            syncGuideToPreset();
+            if (typeof refreshActiveCompDetails === "function") {
+                refreshActiveCompDetails();
+            }
+        }, 200);
         window.addEventListener("resize", syncGuideToPreset);
 
         map.on("moveend", function () {
@@ -2520,16 +2546,7 @@
         document.getElementById("activeMapcompSelect").addEventListener("change", function () {
             var val = this.value;
             document.getElementById("compNameInput").value = val;
-            if (val.indexOf("2") !== -1 || val.indexOf("4K") !== -1) {
-                document.getElementById("compResPreset").value = "3840x2160";
-                updateMapcompGuideBox(3840, 2160);
-            } else if (val.indexOf("3") !== -1 || val.indexOf("Reels") !== -1 || val.indexOf("Tutorial") !== -1 || val.indexOf("1080x1920") !== -1) {
-                document.getElementById("compResPreset").value = "1080x1920";
-                updateMapcompGuideBox(1080, 1920);
-            } else {
-                document.getElementById("compResPreset").value = "1920x1080";
-                updateMapcompGuideBox(1920, 1080);
-            }
+            refreshActiveCompDetails();
             setStatus("Active Mapcomp: " + val);
         });
 
@@ -2626,14 +2643,12 @@
             if (map) {
                 try { map.invalidateSize(); } catch (e) {}
             }
-            var sel = document.getElementById("activeMapcompSelect");
-            var val = sel ? sel.value : "";
-            if (val.indexOf("Reels") !== -1 || val.indexOf("Tutorial") !== -1 || val.indexOf("3") !== -1) {
-                updateMapcompGuideBox(1080, 1920);
-            } else if (val.indexOf("4K") !== -1 || val.indexOf("2") !== -1) {
-                updateMapcompGuideBox(3840, 2160);
+            if (window.__activeCompWidth && window.__activeCompHeight) {
+                updateMapcompGuideBox(window.__activeCompWidth, window.__activeCompHeight);
             } else {
-                updateMapcompGuideBox(1920, 1080);
+                var resEl = document.getElementById("compResPreset");
+                var parts = ((resEl && resEl.value) ? resEl.value : "1920x1080").split("x");
+                updateMapcompGuideBox(parseInt(parts[0], 10) || 1920, parseInt(parts[1], 10) || 1080);
             }
         });
 
