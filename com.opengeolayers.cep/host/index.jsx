@@ -400,11 +400,19 @@ var GeoMotionHost = (function () {
             camLayer.property("Point of Interest").setValue([comp.width / 2, comp.height / 2, 0]);
         } else {
             camLayer.name = "MAP_3D_CAMERA";
+            try {
+                if (camLayer.property("Position").numKeys === 0) {
+                    camLayer.property("Position").setValue([comp.width / 2, comp.height / 2, -1866.0]);
+                }
+                if (camLayer.property("Point of Interest").numKeys === 0) {
+                    camLayer.property("Point of Interest").setValue([comp.width / 2, comp.height / 2, 0]);
+                }
+            } catch (eCamPos) {}
         }
         // Enforce 1:1 camera zoom (1866px matching Position Z = -1866) across ALL comp aspect ratios (16:9, 9:16, 1:1, 4K)
         try {
             var camOpts = camLayer.property("ADBE Camera Options Group");
-            if (camOpts && camOpts.property("ADBE Camera Zoom")) {
+            if (camOpts && camOpts.property("ADBE Camera Zoom") && camOpts.property("ADBE Camera Zoom").numKeys === 0) {
                 camOpts.property("ADBE Camera Zoom").setValue(1866.0);
             }
         } catch (eCamZoom) {}
