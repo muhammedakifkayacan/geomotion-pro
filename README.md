@@ -53,17 +53,17 @@ GeoMotion Pro; pahalı harita eklentilerine ihtiyaç duymadan After Effects içi
 Hazır kurulum paketleri repo içindeki [`dist/`](./dist) klasöründe yer almaktadır:
 
 ### 🍎 macOS Kurulumu
-1. [`dist/GeoMotion_Pro_v3.0_macOS_Installer.dmg`](https://github.com/akifm1pro/geomotion-pro/raw/main/dist/GeoMotion_Pro_v3.0_macOS_Installer.dmg) dosyasını indirin ve çift tıklayarak açın.
+1. [`dist/GeoMotion_Pro_v3.0_macOS_Installer.dmg`](https://github.com/muhammedakifkayacan/geomotion-pro/raw/main/dist/GeoMotion_Pro_v3.0_macOS_Installer.dmg) dosyasını indirin ve çift tıklayarak açın.
 2. Açılan penceredeki **Install GeoMotion Pro** uygulamasını çalıştırın (CEP klasörüne kopyalama ve `PlayerDebugMode` ayarlarını otomatik yapar).
 3. Adobe After Effects'i yeniden başlatın ve **`Window > Extensions > GeoMotion Pro`** menüsünden paneli açın.
 
 ### 🪟 Windows Kurulumu
-1. [`dist/GeoMotion_Pro_v3.0_Windows_Setup.exe`](https://github.com/akifm1pro/geomotion-pro/raw/main/dist/GeoMotion_Pro_v3.0_Windows_Setup.exe) dosyasını indirin ve çalıştırın.
+1. [`dist/GeoMotion_Pro_v3.0_Windows_Setup.exe`](https://github.com/muhammedakifkayacan/geomotion-pro/raw/main/dist/GeoMotion_Pro_v3.0_Windows_Setup.exe) dosyasını indirin ve çalıştırın.
 2. Kurulum sihirbazı gerekli Adobe CEP dizinine (`C:\Program Files (x86)\Common Files\Adobe\CEP\extensions\`) kurulumu ve Kayıt Defteri (`PlayerDebugMode`) yapılandırmasını otomatik tamamlar.
 3. Adobe After Effects'i açın ve **`Window > Extensions > GeoMotion Pro`** menüsünden paneli başlatın.
 
 ### 📦 Evrensel Paket (Manuel Kurulum / ZXP)
-- [`dist/GeoMotion_Pro_v3.0_Universal_Bundle.zip`](https://github.com/akifm1pro/geomotion-pro/raw/main/dist/GeoMotion_Pro_v3.0_Universal_Bundle.zip) veya [`dist/GeoMotion_Pro_v3.0.zxp`](https://github.com/akifm1pro/geomotion-pro/raw/main/dist/GeoMotion_Pro_v3.0.zxp) paketlerini kullanabilirsiniz.
+- [`dist/GeoMotion_Pro_v3.0_Universal_Bundle.zip`](https://github.com/muhammedakifkayacan/geomotion-pro/raw/main/dist/GeoMotion_Pro_v3.0_Universal_Bundle.zip) veya [`dist/GeoMotion_Pro_v3.0.zxp`](https://github.com/muhammedakifkayacan/geomotion-pro/raw/main/dist/GeoMotion_Pro_v3.0.zxp) paketlerini kullanabilirsiniz.
 
 ---
 

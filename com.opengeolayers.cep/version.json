@@ -3,7 +3,7 @@
   "name": "GeoMotion Pro",
   "releaseDate": "2026-11-13",
   "minAEVersion": "13.0",
-  "githubRepo": "akifm1pro/geomotion-pro",
+  "githubRepo": "muhammedakifkayacan/geomotion-pro",
   "changelog": "• GeoMotion Pro v3.0 ilk kararlı açık kaynak sürümü.\n• Yapay Zekâ Copilot ile Türkçe/İngilizce doğal dille harita animasyonu.\n• 3D Tilt, Bearing ve GEO_WORLD_ANCHOR kamera rigi.\n• Akıllı Minimum Zoom Kısıtlaması (Z >= 2.8) ile haritanın kompozisyon dışına taşması engellendi.\n• Otomatik OSRM kara yolu & Great-Circle hava yolu rota motoru.\n• Nominatim OSM vektörel ülke ve şehir sınır çizici.",
   "downloads": {
     "mac": "https://github.com/{repo}/releases/latest/download/GeoMotion_Pro_v3.0_macOS_Installer.dmg",
