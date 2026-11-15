@@ -4,7 +4,7 @@
 
 **100% Open-Source, AI-Powered 3D Map & Geospatial Animation Extension for Adobe After Effects.**
 
-🌐 **Language / Dil:** **🇺🇸 English** | [🇹🇷 Türkçe](README.tr.md)
+🌐 **Language / Dil / اللغة:** **🇺🇸 English** | [🇹🇷 Türkçe](README.tr.md) | [🇸🇦 العربية](README.ar.md)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/muhammedakifkayacan/geomotion-pro)](https://github.com/muhammedakifkayacan/geomotion-pro/releases/latest)
