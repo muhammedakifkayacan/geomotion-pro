@@ -1,75 +1,84 @@
+<div align="center">
+
 # GeoMotion Pro v3.0 🌍🎬
 
-**Adobe After Effects için %100 Açık Kaynak Kodlu, Yapay Zekâ Destekli, Ücretsiz 3D Harita ve Coğrafi Animasyon Eklentisi.**  
-*(100% Open-Source, AI-Powered 3D Map & Geospatial Animation Extension for Adobe After Effects.)*
+**100% Open-Source, AI-Powered 3D Map & Geospatial Animation Extension for Adobe After Effects.**
 
-GeoMotion Pro; pahalı harita eklentilerine ihtiyaç duymadan After Effects içinde sinematik 3D harita animasyonları, yüksek çözünürlüklü uydu/vektör renderları, rota çizgileri, 3D arazi kabartmaları, ülke/şehir sınırları ve veri grafikleri oluşturmanızı sağlayan modern bir CEP eklentisidir.
+🌐 **Language / Dil:** **🇺🇸 English** | [🇹🇷 Türkçe](README.tr.md)
 
----
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/muhammedakifkayacan/geomotion-pro)](https://github.com/muhammedakifkayacan/geomotion-pro/releases/latest)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-lightgrey.svg)](#installation-macos--windows)
 
-## ✨ Temel & İleri Düzey Özellikler
+</div>
 
-### 🤖 1. Yapay Zekâ Copilot (`GeoCopilot`)
-- Türkçe ve İngilizce doğal dil komutlarını anlar (*"İstanbul'dan Ankara'ya rota çiz, 3D kamera uçuşu yap ve sınırları göster"*).
-- Kompozisyon formatını (`16:9`, `9:16 Reels`, `4K`) otomatik ayarlar, keyframe'leri yerleştirir ve katmanları oluşturur.
-
-### 🗺️ 2. Gerçek Zamanlı Önizleme, 1:1 Kılavuz Çerçeve & Multi-Zoom Finalize
-- **1:1 Kompozisyon Eşleşmesi:** Önizlemedeki kılavuz çerçeve (`16:9`, `9:16`, `1:1`, `4K`) After Effects kompozisyon çözünürlüğüyle matematiksel olarak birebir eşleşir.
-- **Etkileşimli 3B Kontrol:** Sol tık ile sürükle (Pan), tekerlek/slider ile zoom, **sağ tık sürükleme ile 3D Pitch (0°–60°) ve Bearing (-180°–180°)**.
-- **Live Link (`🔗`):** Panelde yaptığınız her hareket anlık olarak After Effects sahnesine yansır.
-- **Multi-Zoom Seamless Finalize & ⚡ 1-Kare Finalize:** Tüm kamera keyframe'leri ve geçişleri boyunca yüksek çözünürlüklü 2K harita atlasları (`2304×1792px`) indirip yumuşak geçişli (`Feather + Opacity Blend`) katmanlar olarak işler; tek karelik hızlı önizleme için **1-Kare** modu bulunur.
-- **Harita Sağlayıcıları & Özel TMS:** Esri World Imagery, CartoDB Dark/Light/Voyager, OpenStreetMap, OpenTopoMap, MapTiler Cloud (Satellite V2, Hybrid, Topo, Ocean vb.) ve özel `{z}/{x}/{y}` TMS/WMS sunucuları.
-
-### 📍 3. Vektör Gezgini, Overpass OSM & Çoklu Veri İçe Aktarma
-- **Nominatim & Koordinat Arama:** Ülke, şehir, ilçe veya doğrudan enlem/boylam (`41.0422, 28.9892`) araması.
-- **🎯 Haritadan Tıklayarak Seçim:** Harita üzerinde tıkladığınız ülke, il veya bölgenin sınır poligonunu otomatik indirir.
-- **OSM Vektör Çekici:** Görünümdeki **Otoyollar**, **Nehirler** ve **🏢 3D Binalar** (`OSM 3D Buildings` ekstrüzyonlu) tek tıkla Shape Layer olarak çizilir.
-- **Çoklu Format Desteği:** `.geojson`, `.json`, `.gpx`, `.kml`, `.csv` ve `.tsv` dosyalarını içe aktarır.
-- **Geometri Araçları:** Ramer-Douglas-Peucker (`RDP`) poligon basitleştirme ve **Merge** (çoklu poligon birleştirme).
-
-### 🎨 4. Stil, Su Maskesi, Sis/DOF & Veri Görselleştirme
-- **MAP_STYLE_COLORIZER:** Su, kara ve vurgu renklerini tek tıkla özelleştiren *Adjustment Layer* ekler.
-- **🌊 Watermask (`MAP_WATERMASK_MATTE`):** Okyanus ve deniz yüzeyleri için animasyonlu dalga/parıltı matı üretir.
-- **🌫️ 3D Ufuk Sisi & Kamera Alan Derinliği (DOF):** Kamera eğimine duyarlı ufuk sisi, `MAP_3D_CAMERA` Depth of Field ve vektör katmanlarına *Drop Shadow* ekler.
-- **🌡️ Choropleth & ⏱️ Time-Series:** Bölgeleri düşük-yüksek renk skalasına göre gradyanla boyar ve timeline üzerinde sıralı zaman animasyonuyla (`Stagger`) açar.
-
-### 🧭 5. Pinleme, Ölçek/Pusula, Locator & 2-Point Georeference
-- **Counter-Scale & Counter-Rotate Etiketler:** Kamera zoom yapsa ve dönse bile okunabilirliğini koruyan pin ve başlıklar.
-- **🧭 Ölçek Çubuğu & Kuzey Pusulası:** Kamera zoom'una göre gerçek `km/m` hesaplayan dinamik ölçek ve açıya bağlı pusula.
-- **🗺️ Locator / Inset Harita:** Köşede ana kamerayı canlı takip eden mini genel bakış haritası.
-- **📐 2-Point Georeference:** Seçili bir görseli veya katmanı iki coğrafi koordinat arasına otomatik ölçekleyip hizalar.
-
-### 🚗 6. Rota Animasyonu & 3D DEM Arazi / Heightmap
-- **OSRM Kara Yolu & Kavisli Hava Yolu:** Gerçek yol geometrisi veya Great-Circle uçuş yayı çizer; hız vektörüne göre otomatik yön değiştiren **Dinamik Ok Başlığı (`Arrowhead`)** ve kamera takibi (`Camera Follow`) sunar.
-- **🗻 3D DEM Mesh & 1024×1024 Heightmap Rig:** Open-Meteo DEM yükseklik verilerinden 3B arazi ve Helium / FreeForm Pro / Mir / Displacement Map uyumlu gri tonlamalı yükseklik haritası üretir.
-
-### 🔄 7. Dahili GitHub Otomatik Güncelleme Sistemi
-- Eklenti içinden tek tıkla yeni sürümleri denetler ve otomatik günceller (`version.json`).
+GeoMotion Pro is a free, open-source Adobe CEP extension that lets you create cinematic 3D map animations, high-resolution satellite/vector renders, animated routes, 3D terrain & heightmaps, country/city borders, and geospatial data charts directly inside After Effects—without expensive third-party map plugins.
 
 ---
 
-## 📦 Kurulum (macOS & Windows)
+## ✨ Key & Advanced Features
 
-Hazır kurulum paketleri repo içindeki [`dist/`](./dist) klasöründe yer almaktadır:
+### 🤖 1. AI Copilot (`GeoCopilot`)
+- Understands natural language prompts in **English & Turkish** (e.g., *"Zoom into Turkey from space, fly to Istanbul at 3s, draw borders and add a route to Ankara"*).
+- Automatically configures composition format (`16:9`, `9:16 Reels`, `4K`), places keyframes, and builds AE layers.
 
-### 🍎 macOS Kurulumu
-1. [`dist/GeoMotion_Pro_v3.0_macOS_Installer.dmg`](https://github.com/muhammedakifkayacan/geomotion-pro/raw/main/dist/GeoMotion_Pro_v3.0_macOS_Installer.dmg) dosyasını indirin ve çift tıklayarak açın.
-2. Açılan penceredeki **Install GeoMotion Pro** uygulamasını çalıştırın (CEP klasörüne kopyalama ve `PlayerDebugMode` ayarlarını otomatik yapar).
-3. Adobe After Effects'i yeniden başlatın ve **`Window > Extensions > GeoMotion Pro`** menüsünden paneli açın.
+### 🗺️ 2. Real-Time Preview, 1:1 Framing Guide & Multi-Zoom Finalize
+- **1:1 Composition Match:** The viewport guide box (`16:9`, `9:16`, `1:1`, `4K`) mathematically matches your active After Effects composition dimensions and camera framing.
+- **Interactive 3D Controls:** Left-click drag to pan, wheel/slider to zoom, **right-click drag for 3D Pitch (`0°–60°`) & Bearing (`-180°–180°`)**.
+- **Live Link (`🔗`):** Every pan, zoom, and tilt in the panel syncs live with your After Effects composition.
+- **Multi-Zoom Seamless Finalize & ⚡ 1-Frame Finalize:** Stitches high-resolution 2K map atlases (`2304×1792px`) across all keyframes and transitions with smooth alpha feathering and zoom-blended opacity—plus **1-Frame** mode for instant single-frame high-res rendering.
+- **Map Providers & Custom TMS/XYZ:** Built-in Esri World Imagery, CartoDB Dark/Light/Voyager, OpenStreetMap, OpenTopoMap, MapTiler Cloud (Satellite V2, Hybrid, Topo, Ocean, etc.), and custom `{z}/{x}/{y}` TMS/WMS server profiles.
 
-### 🪟 Windows Kurulumu
-1. [`dist/GeoMotion_Pro_v3.0_Windows_Setup.exe`](https://github.com/muhammedakifkayacan/geomotion-pro/raw/main/dist/GeoMotion_Pro_v3.0_Windows_Setup.exe) dosyasını indirin ve çalıştırın.
-2. Kurulum sihirbazı gerekli Adobe CEP dizinine (`C:\Program Files (x86)\Common Files\Adobe\CEP\extensions\`) kurulumu ve Kayıt Defteri (`PlayerDebugMode`) yapılandırmasını otomatik tamamlar.
-3. Adobe After Effects'i açın ve **`Window > Extensions > GeoMotion Pro`** menüsünden paneli başlatın.
+### 📍 3. Feature Browser, Overpass OSM & Multi-Format Geodata Import
+- **Nominatim & Direct Coordinate Search:** Search countries, cities, regions, or jump directly to `lat, lon` coordinates (e.g., `41.0422, 28.9892`).
+- **🎯 Click-to-Select Feature on Map:** Click anywhere on the map to reverse-geocode and extract administrative boundary polygons automatically.
+- **OSM Vector Extractor:** Download **Highways**, **Rivers**, and **🏢 3D Buildings** (`OSM 3D Buildings` with extrusion) directly as editable AE Shape Layers.
+- **Multi-Format Support:** Import `.geojson`, `.json`, `.gpx`, `.kml`, `.csv`, and `.tsv` files.
+- **Geometry Tools:** Ramer-Douglas-Peucker (`RDP`) polygon simplification and **Merge** (combine multiple polygons).
 
-### 📦 Evrensel Paket (Manuel Kurulum / ZXP)
-- [`dist/GeoMotion_Pro_v3.0_Universal_Bundle.zip`](https://github.com/muhammedakifkayacan/geomotion-pro/raw/main/dist/GeoMotion_Pro_v3.0_Universal_Bundle.zip) veya [`dist/GeoMotion_Pro_v3.0.zxp`](https://github.com/muhammedakifkayacan/geomotion-pro/raw/main/dist/GeoMotion_Pro_v3.0.zxp) paketlerini kullanabilirsiniz.
+### 🎨 4. Map Colorizer, Watermask, 3D Atmosphere/DOF & Data Visualization
+- **MAP_STYLE_COLORIZER:** One-click Adjustment Layer to customize Water, Land, and Highlight colors.
+- **🌊 Watermask (`MAP_WATERMASK_MATTE`):** Generates animated ocean shimmer / luma matte layers.
+- **🌫️ 3D Horizon Fog & Camera DOF (`MAP_HORIZON_FOG`):** Pitch-reactive horizon fog, `MAP_3D_CAMERA` Depth of Field, and vector Drop Shadows.
+- **🌡️ Choropleth & ⏱️ Time-Series:** Gradient-color regions by value and stagger layers sequentially along the timeline with fade-in animations.
+
+### 🧭 5. Labels, Scale Bar, North Compass, Locator & 2-Point Georeference
+- **Counter-Scale & Counter-Rotate Pins:** Labels and pins stay crisp and readable regardless of camera zoom or rotation.
+- **🧭 Scale Bar & North Compass:** Live `km/m` scale bar synced to camera zoom/latitude and dynamic compass needle linked to Bearing.
+- **🗺️ Locator / Inset Map:** Corner overview minimap tracking the main camera's live position and zoom.
+- **📐 2-Point Georeference:** Automatically position and scale any selected layer/image between two geographic coordinates.
+
+### 🚗 6. Animated Routes & 3D DEM Terrain / Heightmap Rig
+- **OSRM Highway & Great-Circle Flight Arcs:** Draws real driving routes or curved flight arcs with an auto-orienting **Dynamic Arrowhead (`ROUTE_TRACKER_`)** and optional camera follow.
+- **🗻 3D DEM Mesh & 1024×1024 Heightmap Rig:** Generates 3D terrain meshes and smooth grayscale heightmap PNGs from Open-Meteo DEM data (compatible with Helium, FreeForm Pro, Trapcode Mir, and AE Displacement Map).
+
+### 🔄 7. Built-in GitHub Auto-Updater
+- Check for updates and install new releases directly from inside the panel (`version.json`).
 
 ---
 
-## 🛠️ Kaynak Koddan Derleme (Geliştiriciler İçin)
+## 📦 Installation (macOS & Windows)
 
-Tüm `.dmg`, `.exe`, `.zip` ve `.zxp` kurulum paketlerini tek komutla derlemek için:
+Pre-built installers are available in [`dist/`](./dist) and on the [**Releases Page**](https://github.com/muhammedakifkayacan/geomotion-pro/releases/latest):
+
+### 🍎 macOS
+1. Download [`GeoMotion_Pro_v3.0_macOS_Installer.dmg`](https://github.com/muhammedakifkayacan/geomotion-pro/releases/latest/download/GeoMotion_Pro_v3.0_macOS_Installer.dmg) and open it.
+2. Run **Install GeoMotion Pro** (automatically installs to Adobe CEP extensions and enables `PlayerDebugMode`).
+3. Restart Adobe After Effects and open **`Window > Extensions > GeoMotion Pro`**.
+
+### 🪟 Windows
+1. Download [`GeoMotion_Pro_v3.0_Windows_Setup.exe`](https://github.com/muhammedakifkayacan/geomotion-pro/releases/latest/download/GeoMotion_Pro_v3.0_Windows_Setup.exe) and run it.
+2. The installer automatically copies the extension to `C:\Program Files (x86)\Common Files\Adobe\CEP\extensions\` and configures the Windows Registry (`PlayerDebugMode`).
+3. Open Adobe After Effects and launch **`Window > Extensions > GeoMotion Pro`**.
+
+### 📦 Universal Bundle / ZXP
+- Manual / ZXP installers are also included: [`GeoMotion_Pro_v3.0_Universal_Bundle.zip`](https://github.com/muhammedakifkayacan/geomotion-pro/releases/latest/download/GeoMotion_Pro_v3.0_Universal_Bundle.zip) and [`GeoMotion_Pro_v3.0.zxp`](https://github.com/muhammedakifkayacan/geomotion-pro/releases/latest/download/GeoMotion_Pro_v3.0.zxp).
+
+---
+
+## 🛠️ Build from Source
+
+To rebuild all `.dmg`, `.exe`, `.zip`, and `.zxp` installers from source:
 
 ```bash
 python3 installers/build_installers.py
@@ -77,22 +86,23 @@ python3 installers/build_installers.py
 
 ---
 
-## 📂 Proje Yapısı
+## 📂 Project Structure
 
 ```text
-├── com.opengeolayers.cep/   # Ana Adobe CEP Eklentisi (HTML/CSS/JS + ExtendScript JSX)
-│   ├── client/              # Panel arayüzü, Leaflet harita motoru, Copilot ve Updater
-│   ├── host/index.jsx       # After Effects ExtendScript sahne ve 3B kamera motoru
-│   └── CSXS/manifest.xml    # Adobe CEP eklenti manifesti (com.geomotion.cep)
-├── installers/              # macOS DMG ve Windows SFX EXE paketleyici betikleri
-├── dist/                    # Derlenmiş macOS, Windows ve Universal kurulum dosyaları
-├── ScriptUI/                # Alternatif ScriptUI paneli (GeoMotion_Pro_Panel.jsx)
-├── version.json             # Otomatik güncelleme sürüm bildirimi
-└── LICENSE                  # MIT Açık Kaynak Lisansı
+├── com.opengeolayers.cep/   # Main Adobe CEP Extension (HTML/CSS/JS + ExtendScript JSX)
+│   ├── client/              # Panel UI, Leaflet map engine, GeoCopilot, and GeoUpdater
+│   ├── host/index.jsx       # After Effects ExtendScript scene & 3D camera engine
+│   └── CSXS/manifest.xml    # Adobe CEP manifest (com.geomotion.cep)
+├── installers/              # macOS DMG and Windows SFX EXE builder scripts
+├── dist/                    # Compiled macOS, Windows, and Universal installers
+├── ScriptUI/                # Alternative ScriptUI panel (GeoMotion_Pro_Panel.jsx)
+├── version.json             # Auto-updater version manifest
+├── README.tr.md             # Turkish documentation
+└── LICENSE                  # MIT Open Source License
 ```
 
 ---
 
-## 📄 Lisans
+## 📄 License
 
-Bu proje **MIT Lisansı** ([LICENSE](./LICENSE)) ile açık kaynak olarak paylaşılmıştır. Ticari ve kişisel tüm projelerinizde özgürce kullanabilir, çatallayabilir (fork) ve geliştirebilirsiniz.
+This project is licensed under the **MIT License** ([LICENSE](./LICENSE)). You are free to use, modify, fork, and distribute it for personal and commercial projects.
