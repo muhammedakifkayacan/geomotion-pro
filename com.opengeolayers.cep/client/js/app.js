@@ -2342,7 +2342,7 @@
     var CURRENT_VERSION = "3.0.0";
     var GeoUpdater = {
         currentVersion: CURRENT_VERSION,
-        defaultRepo: "akifm1pro/geomotion-pro",
+        defaultRepo: "muhammedakifkayacan/geomotion-pro",
         latestReleaseData: null,
 
         getRepo: function () {
