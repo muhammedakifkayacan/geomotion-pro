@@ -4,7 +4,7 @@
 
 **Adobe After Effects için %100 Açık Kaynak Kodlu, Yapay Zekâ Destekli, Ücretsiz 3D Harita ve Coğrafi Animasyon Eklentisi.**
 
-🌐 **Language / Dil:** [🇺🇸 English](README.md) | **🇹🇷 Türkçe**
+🌐 **Language / Dil / اللغة:** [🇺🇸 English](README.md) | **🇹🇷 Türkçe** | [🇸🇦 العربية](README.ar.md)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/muhammedakifkayacan/geomotion-pro)](https://github.com/muhammedakifkayacan/geomotion-pro/releases/latest)
