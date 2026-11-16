@@ -497,6 +497,23 @@ var GeoMotionHost = (function () {
         };
     }
 
+    function findExistingGeoComp(options) {
+        options = options || {};
+        if (!app.project) return null;
+        var active = app.project.activeItem;
+        if (active && active instanceof CompItem) {
+            return active;
+        }
+        var compName = options.compName || "Mapcomp 1";
+        for (var i = 1; i <= app.project.numItems; i++) {
+            var item = app.project.item(i);
+            if (item instanceof CompItem && item.name === compName) {
+                return item;
+            }
+        }
+        return null;
+    }
+
     function getOrCreateActiveGeoComp(options) {
         options = options || {};
         var compName = options.compName || "Mapcomp 1";
@@ -820,12 +837,7 @@ var GeoMotionHost = (function () {
         getCurrentMapcompViewState: function (payloadJson) {
             try {
                 var data = JSON.parse(payloadJson || "{}");
-                var comp = null;
-                if (app.project && app.project.activeItem && app.project.activeItem instanceof CompItem) {
-                    comp = app.project.activeItem;
-                } else {
-                    comp = getOrCreateActiveGeoComp(data);
-                }
+                var comp = findExistingGeoComp(data);
                 if (!comp || !(comp instanceof CompItem)) {
                     return JSON.stringify({ ok: false });
                 }
@@ -1903,7 +1915,13 @@ var GeoMotionHost = (function () {
         getMapcompDetails: function (payloadJson) {
             try {
                 var data = JSON.parse(payloadJson || "{}");
-                var comp = getOrCreateActiveGeoComp(data);
+                var comp = findExistingGeoComp(data);
+                if (!comp) {
+                    return JSON.stringify({
+                        ok: false,
+                        allMapcomps: getAllProjectMapcompNames()
+                    });
+                }
                 return JSON.stringify({
                     ok: true,
                     name: comp.name,
