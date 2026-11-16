@@ -2,7 +2,7 @@
 
 # GeoMotion Pro v3.0 🌍🎬
 
-**100% Open-Source, AI-Powered 3D Map & Geospatial Animation Extension for Adobe After Effects.**
+**100% Open-Source, AI-Powered Map & Geospatial Animation Extension for Adobe After Effects.**
 
 🌐 **Language / Dil / اللغة:** **🇺🇸 English** | [🇹🇷 Türkçe](README.tr.md) | [🇸🇦 العربية](README.ar.md)
 
@@ -12,7 +12,7 @@
 
 </div>
 
-GeoMotion Pro is a free, open-source Adobe CEP extension that lets you create cinematic 3D map animations, high-resolution satellite/vector renders, animated routes, 3D terrain & heightmaps, country/city borders, and geospatial data charts directly inside After Effects—without expensive third-party map plugins.
+GeoMotion Pro is a free, open-source Adobe CEP extension that lets you create cinematic map animations, high-resolution satellite/vector renders, animated routes, country/city borders, and geospatial data charts directly inside After Effects—without expensive third-party map plugins.
 
 ---
 
@@ -24,7 +24,7 @@ GeoMotion Pro is a free, open-source Adobe CEP extension that lets you create ci
 
 ### 🗺️ 2. Real-Time Preview, 1:1 Framing Guide & Multi-Zoom Finalize
 - **1:1 Composition Match:** The viewport guide box (`16:9`, `9:16`, `1:1`, `4K`) mathematically matches your active After Effects composition dimensions and camera framing.
-- **Interactive 3D Controls:** Left-click drag to pan, wheel/slider to zoom, **right-click drag for 3D Pitch (`0°–60°`) & Bearing (`-180°–180°`)**.
+- **Interactive Camera Controls:** Left-click drag to pan, wheel/slider to zoom, **right-click drag for Pitch (`0°–60°`) & Bearing (`-180°–180°`)**.
 - **Live Link (`🔗`):** Every pan, zoom, and tilt in the panel syncs live with your After Effects composition.
 - **Multi-Zoom Seamless Finalize & ⚡ 1-Frame Finalize:** Stitches high-resolution 2K map atlases (`2304×1792px`) across all keyframes and transitions with smooth alpha feathering and zoom-blended opacity—plus **1-Frame** mode for instant single-frame high-res rendering.
 - **Map Providers & Custom TMS/XYZ:** Built-in Esri World Imagery, CartoDB Dark/Light/Voyager, OpenStreetMap, OpenTopoMap, MapTiler Cloud (Satellite V2, Hybrid, Topo, Ocean, etc.), and custom `{z}/{x}/{y}` TMS/WMS server profiles.
@@ -32,14 +32,14 @@ GeoMotion Pro is a free, open-source Adobe CEP extension that lets you create ci
 ### 📍 3. Feature Browser, Overpass OSM & Multi-Format Geodata Import
 - **Nominatim & Direct Coordinate Search:** Search countries, cities, regions, or jump directly to `lat, lon` coordinates (e.g., `41.0422, 28.9892`).
 - **🎯 Click-to-Select Feature on Map:** Click anywhere on the map to reverse-geocode and extract administrative boundary polygons automatically.
-- **OSM Vector Extractor:** Download **Highways**, **Rivers**, and **🏢 3D Buildings** (`OSM 3D Buildings` with extrusion) directly as editable AE Shape Layers.
+- **OSM Vector Extractor:** Download **Highways** and **Rivers** directly as editable AE Shape Layers.
 - **Multi-Format Support:** Import `.geojson`, `.json`, `.gpx`, `.kml`, `.csv`, and `.tsv` files.
 - **Geometry Tools:** Ramer-Douglas-Peucker (`RDP`) polygon simplification and **Merge** (combine multiple polygons).
 
-### 🎨 4. Map Colorizer, Watermask, 3D Atmosphere/DOF & Data Visualization
+### 🎨 4. Map Colorizer, Watermask, Atmosphere/DOF & Data Visualization
 - **MAP_STYLE_COLORIZER:** One-click Adjustment Layer to customize Water, Land, and Highlight colors.
 - **🌊 Watermask (`MAP_WATERMASK_MATTE`):** Generates animated ocean shimmer / luma matte layers.
-- **🌫️ 3D Horizon Fog & Camera DOF (`MAP_HORIZON_FOG`):** Pitch-reactive horizon fog, `MAP_3D_CAMERA` Depth of Field, and vector Drop Shadows.
+- **🌫️ Horizon Fog & Camera DOF (`MAP_HORIZON_FOG`):** Pitch-reactive horizon fog, `MAP_3D_CAMERA` Depth of Field, and vector Drop Shadows.
 - **🌡️ Choropleth & ⏱️ Time-Series:** Gradient-color regions by value and stagger layers sequentially along the timeline with fade-in animations.
 
 ### 🧭 5. Labels, Scale Bar, North Compass, Locator & 2-Point Georeference
@@ -48,9 +48,8 @@ GeoMotion Pro is a free, open-source Adobe CEP extension that lets you create ci
 - **🗺️ Locator / Inset Map:** Corner overview minimap tracking the main camera's live position and zoom.
 - **📐 2-Point Georeference:** Automatically position and scale any selected layer/image between two geographic coordinates.
 
-### 🚗 6. Animated Routes & 3D DEM Terrain / Heightmap Rig
+### 🚗 6. Animated Routes
 - **OSRM Highway & Great-Circle Flight Arcs:** Draws real driving routes or curved flight arcs with an auto-orienting **Dynamic Arrowhead (`ROUTE_TRACKER_`)** and optional camera follow.
-- **🗻 3D DEM Mesh & 1024×1024 Heightmap Rig:** Generates 3D terrain meshes and smooth grayscale heightmap PNGs from Open-Meteo DEM data (compatible with Helium, FreeForm Pro, Trapcode Mir, and AE Displacement Map).
 
 ### 🔄 7. Built-in GitHub Auto-Updater
 - Check for updates and install new releases directly from inside the panel (`version.json`).
