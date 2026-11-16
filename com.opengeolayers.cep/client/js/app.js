@@ -1577,7 +1577,7 @@
                 boundsParam = "&viewbox=" + b.getWest().toFixed(4) + "," + b.getNorth().toFixed(4) + "," + b.getEast().toFixed(4) + "," + b.getSouth().toFixed(4) + "&bounded=0";
             } catch (e) {}
         }
-        var url = "https://nominatim.openstreetmap.org/search?format=json&limit=8&q=" +
+        var url = "https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&q=" +
             encodeURIComponent(query) +
             boundsParam +
             (withPolygon ? "&polygon_geojson=1" : "");
@@ -2136,33 +2136,98 @@
         box.style.height = Math.round(boxH) + "px";
     }
 
-    function downloadAndAddFeature(queryName, autoDrawInAE) {
-        getCleanCountry(queryName, function (cleanCountry) {
-            if (cleanCountry && cleanCountry.paths && cleanCountry.paths.length > 0) {
-                var cleanFeat = {
-                    id: "clean_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
-                    name: cleanCountry.name + " (Temiz Kara Sınırı)",
-                    type: "POLYGON",
-                    lat: cleanCountry.lat || 0,
-                    lon: cleanCountry.lon || 0,
-                    zoom: 5.5,
-                    geojson: null,
-                    polygons: cleanCountry.paths,
-                    closed: true
-                };
-                featureCollection.unshift(cleanFeat);
-                selectFeature(cleanFeat.id, true);
-                setStatus(cleanCountry.name + " temiz kara sınırı eklendi (" + cleanCountry.paths.length + " yol, 0 deniz hatası).");
-                if (autoDrawInAE) {
-                    drawFeatureInAE(cleanFeat);
+    var adm1Cache = {};
+    var ISO2_TO_ISO3 = {
+        tr: "TUR", us: "USA", de: "DEU", fr: "FRA", gb: "GBR", uk: "GBR",
+        it: "ITA", es: "ESP", ru: "RUS", ir: "IRN", sy: "SYR", iq: "IRQ",
+        gr: "GRC", bg: "BGR", ge: "GEO", az: "AZE", am: "ARM", cy: "CYP",
+        nl: "NLD", be: "BEL", ch: "CHE", at: "AUT", pl: "POL", ua: "UKR",
+        jp: "JPN", cn: "CHN", kr: "KOR", in: "IND", br: "BRA", ca: "CAN",
+        au: "AUS", mx: "MEX", sa: "SAU", eg: "EGY", ae: "ARE", qa: "QAT",
+        pt: "PRT", se: "SWE", no: "NOR", fi: "FIN", dk: "DNK", ro: "ROU"
+    };
+
+    function normalizeGeoName(str) {
+        var s = String(str || "").toLowerCase().trim();
+        var trMap = { 'ı': 'i', 'İ': 'i', 'ç': 'c', 'ğ': 'g', 'ö': 'o', 'ş': 's', 'ü': 'u' };
+        for (var k in trMap) s = s.split(k).join(trMap[k]);
+        return s.replace(/\s+(province|ili|il|state|region|governorate)$/i, "").trim();
+    }
+
+    function fetchCleanLandProvince(provinceName, countryCode2) {
+        var cc2 = String(countryCode2 || "").toLowerCase();
+        var iso3 = ISO2_TO_ISO3[cc2];
+        if (!iso3 || !provinceName) return Promise.resolve(null);
+        var targetNorm = normalizeGeoName(provinceName);
+
+        function matchFeature(features) {
+            if (!features || !features.length) return null;
+            for (var i = 0; i < features.length; i++) {
+                var f = features[i];
+                var nm = normalizeGeoName((f.properties && (f.properties.shapeName || f.properties.name)) || "");
+                if (nm === targetNorm || nm.indexOf(targetNorm) !== -1 || targetNorm.indexOf(nm) !== -1) {
+                    return f;
                 }
-                return;
             }
+            return null;
+        }
+
+        if (adm1Cache[iso3]) {
+            return Promise.resolve(matchFeature(adm1Cache[iso3]));
+        }
+
+        return fetch("https://www.geoboundaries.org/api/current/gbOpen/" + iso3 + "/ADM1/")
+            .then(function (r) { return r.json(); })
+            .then(function (meta) {
+                var gjUrl = meta.simplifiedGeometryGeoJSON || meta.gjDownloadURL;
+                if (!gjUrl) return null;
+                return fetch(gjUrl).then(function (r2) { return r2.json(); });
+            })
+            .then(function (gj) {
+                if (gj && gj.features) {
+                    adm1Cache[iso3] = gj.features;
+                    return matchFeature(gj.features);
+                }
+                return null;
+            })
+            .catch(function () { return null; });
+    }
+
+    function downloadAndAddFeature(queryName, autoDrawInAE) {
+        var includeSeaEl = document.getElementById("chkIncludeSeaBoundary");
+        var includeSea = includeSeaEl ? includeSeaEl.checked : false;
+        if (!includeSea) {
+            getCleanCountry(queryName, function (cleanCountry) {
+                if (cleanCountry && cleanCountry.paths && cleanCountry.paths.length > 0) {
+                    var cleanFeat = {
+                        id: "clean_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+                        name: cleanCountry.name + " (Temiz Kara Sınırı)",
+                        type: "POLYGON",
+                        lat: cleanCountry.lat || 0,
+                        lon: cleanCountry.lon || 0,
+                        zoom: 5.5,
+                        geojson: null,
+                        polygons: cleanCountry.paths,
+                        closed: true
+                    };
+                    featureCollection.unshift(cleanFeat);
+                    selectFeature(cleanFeat.id, true);
+                    setStatus(cleanCountry.name + " temiz kara sınırı eklendi (" + cleanCountry.paths.length + " yol, 0 deniz hatası).");
+                    if (autoDrawInAE) {
+                        drawFeatureInAE(cleanFeat);
+                    }
+                    return;
+                }
+                performNominatimDownload(queryName, autoDrawInAE);
+            });
+        } else {
             performNominatimDownload(queryName, autoDrawInAE);
-        });
+        }
     }
 
     function performNominatimDownload(queryName, autoDrawInAE) {
+        var includeSeaEl = document.getElementById("chkIncludeSeaBoundary");
+        var includeSea = includeSeaEl ? includeSeaEl.checked : false;
         setStatus("Downloading GeoJSON Feature '" + queryName + "'...");
         searchNominatim(queryName, true).then(function (results) {
             if (!results || !results.length) {
@@ -2170,25 +2235,45 @@
                 return;
             }
             var best = results[0];
-            var extracted = best.geojson ? extractPathsFromGeoJSON(best.geojson) : { paths: [], closed: true };
             var cleanName = best.display_name.split(",")[0];
-            var newFeat = {
-                id: "feat_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
-                name: cleanName,
-                type: extracted.paths.length > 0 ? (extracted.closed ? "POLYGON" : "LINE") : "POINT",
-                lat: parseFloat(best.lat),
-                lon: parseFloat(best.lon),
-                zoom: 6,
-                geojson: best.geojson || null,
-                polygons: extracted.paths,
-                closed: extracted.closed
-            };
-            featureCollection.unshift(newFeat);
-            selectFeature(newFeat.id, true);
-            setStatus("Feature '" + cleanName + "' eklendi (" + extracted.paths.length + " vektör yolu).");
+            var cc2 = best.address && best.address.country_code ? best.address.country_code : "";
 
-            if (autoDrawInAE) {
-                drawFeatureInAE(newFeat);
+            function finalizeFeat(extracted, labelSuffix, customGeojson) {
+                var newFeat = {
+                    id: "feat_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+                    name: cleanName + (labelSuffix || ""),
+                    type: extracted.paths.length > 0 ? (extracted.closed ? "POLYGON" : "LINE") : "POINT",
+                    lat: parseFloat(best.lat),
+                    lon: parseFloat(best.lon),
+                    zoom: 8,
+                    geojson: customGeojson || best.geojson || null,
+                    polygons: extracted.paths,
+                    closed: extracted.closed
+                };
+                featureCollection.unshift(newFeat);
+                selectFeature(newFeat.id, true);
+                setStatus("Feature '" + newFeat.name + "' eklendi (" + extracted.paths.length + " vektör yolu).");
+
+                if (autoDrawInAE) {
+                    drawFeatureInAE(newFeat);
+                }
+            }
+
+            if (!includeSea && cc2) {
+                fetchCleanLandProvince(cleanName, cc2).then(function (adm1Feat) {
+                    if (adm1Feat && adm1Feat.geometry) {
+                        var cleanExt = extractPathsFromGeoJSON(adm1Feat.geometry);
+                        if (cleanExt.paths && cleanExt.paths.length > 0) {
+                            finalizeFeat(cleanExt, " (Kara Sınırı)", adm1Feat);
+                            return;
+                        }
+                    }
+                    var fallbackExt = best.geojson ? extractPathsFromGeoJSON(best.geojson) : { paths: [], closed: true };
+                    finalizeFeat(fallbackExt, "", null);
+                });
+            } else {
+                var extracted = best.geojson ? extractPathsFromGeoJSON(best.geojson) : { paths: [], closed: true };
+                finalizeFeat(extracted, includeSea ? " (Deniz Dahil)" : "", null);
             }
         }).catch(function (err) {
             setStatus("Download Feature Hatası: " + err.message, true);
