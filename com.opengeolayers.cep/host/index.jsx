@@ -2389,7 +2389,7 @@ var GeoMotionHost = (function () {
                 // Clean previous heightmap / hillshade / relief layers
                 for (var idx = comp.numLayers; idx >= 1; idx--) {
                     var nm = comp.layer(idx).name;
-                    if (nm === "MAP_HEIGHTMAP_DISPLACEMENT" || nm === "MAP_3D_HILLSHADE" || nm === "MAP_3D_RELIEF_DISPLACEMENT") {
+                    if (nm.indexOf("MAP_HEIGHTMAP_DISPLACEMENT") === 0 || nm.indexOf("MAP_3D_HILLSHADE") === 0 || nm === "MAP_3D_RELIEF_DISPLACEMENT") {
                         comp.layer(idx).remove();
                     }
                 }
@@ -2422,6 +2422,34 @@ var GeoMotionHost = (function () {
                     }
                 }
 
+                // Import Wide Horizon 3D Hillshade Layer (covers entire country/continent when zooming out!)
+                if (data.horizonHillshadePath) {
+                    var hzf = new File(data.horizonHillshadePath);
+                    if (hzf.exists) {
+                        var hzio = new ImportOptions(hzf);
+                        var hzFootage = app.project.importFile(hzio);
+                        var hzLayer = comp.layers.add(hzFootage);
+                        var hzZoom = parseFloat(data.horizonZoom || Math.max(4, tileZoom - 3));
+                        var hzScale = Math.pow(2, rig.refZoom - hzZoom) * 100.0;
+                        var hzXY = latLonToCompXY(
+                            parseFloat(data.horizonLat || cLat),
+                            parseFloat(data.horizonLon || cLon),
+                            rig.refLat, rig.refLon, rig.refZoom, comp.width, comp.height
+                        );
+                        hzLayer.name = "MAP_3D_HILLSHADE_HORIZON_Z" + hzZoom;
+                        hzLayer.comment = "Wide-Area 3D Shaded Relief for Zoom-Out Transitions";
+                        hzLayer.label = 9;
+                        attachCoplanarToAnchor(hzLayer, rig.anchor, [hzXY[0], hzXY[1], -0.35], [hzScale, hzScale, 100]);
+                        try { hzLayer.blendingMode = BlendingMode.SOFT_LIGHT; } catch (eBmH) {}
+                        var hzTargetOp = Math.min(85, Math.round(38 + exag * 8));
+                        hzLayer.property("Transform").property("Opacity").expression = [
+                            "function getCtrl(){ try { return thisComp.layer('MAP_CAMERA_CONTROLLER'); } catch(e){ return thisComp.layer('GEO_MAPCOMP_CONTROL'); } }",
+                            "var z = getCtrl().effect('Mapcomp Zoom')('Slider');",
+                            "linear(z, " + (tileZoom - 2.6).toFixed(2) + ", " + (tileZoom - 0.8).toFixed(2) + ", " + hzTargetOp + ", 0);"
+                        ].join("\n");
+                    }
+                }
+
                 // Import 3D Sun-Lit Hillshade Relief Layer (full 2304x1792 seamless coverage, Soft Light 3D shading)
                 if (data.hillshadePath) {
                     var hf = new File(data.hillshadePath);
@@ -2429,7 +2457,7 @@ var GeoMotionHost = (function () {
                         var hio = new ImportOptions(hf);
                         var hFootage = app.project.importFile(hio);
                         var hsLayer = comp.layers.add(hFootage);
-                        hsLayer.name = "MAP_3D_HILLSHADE";
+                        hsLayer.name = "MAP_3D_HILLSHADE_DETAIL_Z" + tileZoom;
                         hsLayer.comment = "3D Shaded Terrain Relief (SRTM DEM Sun-Lit Hillshade)";
                         hsLayer.label = 9;
                         attachCoplanarToAnchor(
@@ -2448,6 +2476,14 @@ var GeoMotionHost = (function () {
                             applyEasyEase(opProp);
                         } else {
                             opProp.setValue(targetOp);
+                        }
+                        if (data.horizonHillshadePath) {
+                            opProp.expression = [
+                                "function getCtrl(){ try { return thisComp.layer('MAP_CAMERA_CONTROLLER'); } catch(e){ return thisComp.layer('GEO_MAPCOMP_CONTROL'); } }",
+                                "var z = getCtrl().effect('Mapcomp Zoom')('Slider');",
+                                "var blend = linear(z, " + (tileZoom - 2.6).toFixed(2) + ", " + (tileZoom - 0.8).toFixed(2) + ", 0, 1);",
+                                "value * blend;"
+                            ].join("\n");
                         }
                     }
                 }

@@ -3548,7 +3548,7 @@
             lastPackage: null
         };
 
-        function buildTerrariumTerrainPackage(lat, lon, rawZoom, provider, halfCols, halfRows) {
+        function buildTerrariumTerrainPackage(lat, lon, rawZoom, provider, halfCols, halfRows, featherHillshade) {
             halfCols = (halfCols !== undefined) ? halfCols : 1;
             halfRows = (halfRows !== undefined) ? halfRows : 1;
             var cols = halfCols * 2 + 1;
@@ -3689,6 +3689,34 @@
                 hsHCtx.imageSmoothingEnabled = true;
                 hsHCtx.imageSmoothingQuality = "high";
                 hsHCtx.drawImage(hsSmall, 0, 0, pxW, pxH);
+
+                if (featherHillshade) {
+                    // Feather outer 140px toward neutral mid-gray (128,128,128) so Soft Light has ZERO hard edges when zooming out!
+                    var fSz = 140;
+                    var gT = hsHCtx.createLinearGradient(0, 0, 0, fSz);
+                    gT.addColorStop(0, "rgba(128,128,128,1)");
+                    gT.addColorStop(1, "rgba(128,128,128,0)");
+                    hsHCtx.fillStyle = gT;
+                    hsHCtx.fillRect(0, 0, pxW, fSz);
+
+                    var gB = hsHCtx.createLinearGradient(0, pxH, 0, pxH - fSz);
+                    gB.addColorStop(0, "rgba(128,128,128,1)");
+                    gB.addColorStop(1, "rgba(128,128,128,0)");
+                    hsHCtx.fillStyle = gB;
+                    hsHCtx.fillRect(0, pxH - fSz, pxW, fSz);
+
+                    var gL = hsHCtx.createLinearGradient(0, 0, fSz, 0);
+                    gL.addColorStop(0, "rgba(128,128,128,1)");
+                    gL.addColorStop(1, "rgba(128,128,128,0)");
+                    hsHCtx.fillStyle = gL;
+                    hsHCtx.fillRect(0, 0, fSz, pxH);
+
+                    var gR = hsHCtx.createLinearGradient(pxW, 0, pxW - fSz, 0);
+                    gR.addColorStop(0, "rgba(128,128,128,1)");
+                    gR.addColorStop(1, "rgba(128,128,128,0)");
+                    hsHCtx.fillStyle = gR;
+                    hsHCtx.fillRect(pxW - fSz, 0, fSz, pxH);
+                }
 
                 return {
                     z: z,
@@ -4004,7 +4032,7 @@
             });
         }
 
-        function exportTerrainPackageToAE(pkg, exagVal) {
+        function exportTerrainPackageToAE(pkg, exagVal, horizonPkg) {
             if (typeof window.require !== "function") {
                 setStatus("3D DEM oluşturuldu (Min: " + Math.round(pkg.minE) + "m, Max: " + Math.round(pkg.maxE) + "m).");
                 return;
@@ -4027,24 +4055,43 @@
             payload.tileZoom = pkg.z;
             payload.centerLat = pkg.centerLat;
             payload.centerLon = pkg.centerLon;
+            if (horizonPkg) {
+                var hsHorPath = path.join(dir, "Hillshade_Horizon_" + ts + ".png");
+                fs.writeFileSync(hsHorPath, Buffer.from(horizonPkg.hsCanvas.toDataURL("image/png").replace(/^data:image\/png;base64,/, ""), "base64"));
+                payload.horizonHillshadePath = hsHorPath;
+                payload.horizonZoom = horizonPkg.z;
+                payload.horizonLat = horizonPkg.centerLat;
+                payload.horizonLon = horizonPkg.centerLon;
+            }
             payload.exaggeration = exagVal || 2.5;
             payload.animateRelief = animChk ? animChk.checked : true;
             callHost("importHeightmapAnd3DRig", payload);
         }
 
+        function buildAndExportMultiZoom3D(exagVal, onDone) {
+            var c = map.getCenter();
+            var settings = getMapcompSettings();
+            var baseZ = Math.min(13, Math.max(4, Math.round(settings.zoom || map.getZoom())));
+            var horizonZ = Math.max(4, baseZ - 3);
+            var provKey = document.getElementById("tileProviderSelect").value || "esri_sat";
+            var prov = TILE_PROVIDERS[provKey] || TILE_PROVIDERS.esri_sat;
+
+            var jobs = [buildTerrariumTerrainPackage(c.lat, c.lng, baseZ, prov, 4, 3, horizonZ < baseZ)];
+            if (horizonZ < baseZ) {
+                jobs.push(buildTerrariumTerrainPackage(c.lat, c.lng, horizonZ, prov, 4, 3, true));
+            }
+            return Promise.all(jobs).then(function (pkgs) {
+                exportTerrainPackageToAE(pkgs[0], exagVal, pkgs[1] || null);
+                if (typeof onDone === "function") onDone();
+            });
+        }
+
         var btnSend3DAE = document.getElementById("btnSend3DToAE");
         if (btnSend3DAE) {
             btnSend3DAE.addEventListener("click", function () {
-                var c = map.getCenter();
-                var z = map.getZoom();
-                var provKey = document.getElementById("tileProviderSelect").value || "esri_sat";
-                var prov = TILE_PROVIDERS[provKey] || TILE_PROVIDERS.esri_sat;
                 var stLbl = document.getElementById("terrain3DStatus");
-                if (stLbl) stLbl.textContent = "Tam Ekran 9x7 3D Rölyef AE'ye hazırlanıyor...";
-                buildTerrariumTerrainPackage(c.lat, c.lng, z, prov, 4, 3).then(function (fullPkg) {
-                    exportTerrainPackageToAE(fullPkg, terrain3DState.exag);
-                    closeInteractive3DMode();
-                });
+                if (stLbl) stLbl.textContent = "Çoklu-Zoom 3D Rölyef AE'ye hazırlanıyor...";
+                buildAndExportMultiZoom3D(terrain3DState.exag, closeInteractive3DMode);
             });
         }
 
@@ -4052,19 +4099,11 @@
         var btnHeightmapRig = document.getElementById("btnExportHeightmapRig");
         if (btnHeightmapRig) {
             btnHeightmapRig.addEventListener("click", function () {
-                var c = map.getCenter();
-                var z = map.getZoom();
-                var provKey = document.getElementById("tileProviderSelect").value || "esri_sat";
-                var prov = TILE_PROVIDERS[provKey] || TILE_PROVIDERS.esri_sat;
                 var exag = parseFloat(document.getElementById("terrainExaggeration").value) || 2.5;
-                setStatus("🗻 Tam Ekran 9x7 SRTM DEM üzerinden 3D Hillshade + Heightmap oluşturuluyor...");
-                buildTerrariumTerrainPackage(c.lat, c.lng, z, prov, 4, 3)
-                    .then(function (pkg) {
-                        exportTerrainPackageToAE(pkg, exag);
-                    })
-                    .catch(function (err) {
-                        setStatus("Heightmap DEM hatası: " + err.message, true);
-                    });
+                setStatus("🗻 Çoklu-Zoom SRTM DEM üzerinden tüm bölge & ufuk için 3D Hillshade + Heightmap oluşturuluyor...");
+                buildAndExportMultiZoom3D(exag).catch(function (err) {
+                    setStatus("Heightmap DEM hatası: " + err.message, true);
+                });
             });
         }
 
