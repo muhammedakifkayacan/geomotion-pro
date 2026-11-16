@@ -777,6 +777,84 @@ var GeoMotionHost = (function () {
             }
         },
 
+        /**
+         * Reads the active Mapcomp's exact camera state (Lat, Lon, Zoom, Pitch, Bearing)
+         * at the current After Effects CTI time so the CEP preview stays 1:1 synced with AE keyframes!
+         */
+        getCurrentMapcompViewState: function (payloadJson) {
+            try {
+                var data = JSON.parse(payloadJson || "{}");
+                var comp = null;
+                if (app.project && app.project.activeItem && app.project.activeItem instanceof CompItem) {
+                    comp = app.project.activeItem;
+                } else {
+                    comp = getOrCreateActiveGeoComp(data);
+                }
+                if (!comp || !(comp instanceof CompItem)) {
+                    return JSON.stringify({ ok: false });
+                }
+                var ctrlLayer = null;
+                for (var i = 1; i <= comp.numLayers; i++) {
+                    var lName = comp.layer(i).name;
+                    if (lName === "MAP_CAMERA_CONTROLLER" || lName === "GEO_MAPCOMP_CONTROL") {
+                        ctrlLayer = comp.layer(i);
+                        break;
+                    }
+                }
+                if (!ctrlLayer) {
+                    return JSON.stringify({ ok: false });
+                }
+                var fx = ctrlLayer.property("ADBE Effect Parade");
+                var latP = fx.property("Mapcomp Latitude").property(1);
+                var lonP = fx.property("Mapcomp Longitude").property(1);
+                var zP = fx.property("Mapcomp Zoom").property(1);
+                var pP = fx.property("Mapcomp Pitch").property(1);
+                var bP = fx.property("Mapcomp Bearing").property(1);
+
+                var t = comp.time;
+                var lat = latP.valueAtTime(t, false);
+                var lon = lonP.valueAtTime(t, false);
+                var zCur = zP.valueAtTime(t, false);
+
+                if (zP.numKeys >= 2 && latP.numKeys >= 2 && lonP.numKeys >= 2) {
+                    var nk = zP.nearestKeyIndex(t);
+                    var k1 = (zP.keyTime(nk) <= t) ? nk : Math.max(1, nk - 1);
+                    var k2 = Math.min(zP.numKeys, k1 + 1);
+                    if (k1 !== k2) {
+                        var t1 = zP.keyTime(k1);
+                        var t2 = zP.keyTime(k2);
+                        if (t > t1 && t < t2) {
+                            var z1 = zP.keyValue(k1);
+                            var z2 = zP.keyValue(k2);
+                            if (Math.abs(z1 - z2) > 1.2) {
+                                var s1 = Math.pow(2, -z1);
+                                var s2 = Math.pow(2, -z2);
+                                var sCur = Math.pow(2, -zCur);
+                                var w = Math.min(1, Math.max(0, (sCur - s1) / (s2 - s1)));
+                                lat = latP.valueAtTime(t1, false) + (latP.valueAtTime(t2, false) - latP.valueAtTime(t1, false)) * w;
+                                lon = lonP.valueAtTime(t1, false) + (lonP.valueAtTime(t2, false) - lonP.valueAtTime(t1, false)) * w;
+                            }
+                        }
+                    }
+                }
+
+                return JSON.stringify({
+                    ok: true,
+                    compName: comp.name,
+                    width: comp.width,
+                    height: comp.height,
+                    time: Number(t.toFixed(3)),
+                    lat: lat,
+                    lon: lon,
+                    zoom: zCur,
+                    pitch: pP.valueAtTime(t, false),
+                    bearing: bP.valueAtTime(t, false)
+                });
+            } catch (err) {
+                return JSON.stringify({ ok: false, error: err.toString() });
+            }
+        },
+
         createGeoMapComp: function (payloadJson) {
             app.beginUndoGroup("GeoMotion: Create Mapcomp");
             try {
