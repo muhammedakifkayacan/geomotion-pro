@@ -2439,14 +2439,23 @@ var GeoMotionHost = (function () {
                             [atlasScale, atlasScale, 100]
                         );
                         try { hsLayer.blendingMode = BlendingMode.SOFT_LIGHT; } catch (eBm) {}
-                        hsLayer.property("Transform").property("Opacity").setValue(Math.min(85, Math.round(40 + exag * 9)));
+                        var targetOp = Math.min(88, Math.round(42 + exag * 9));
+                        var opProp = hsLayer.property("Transform").property("Opacity");
+                        if (data.animateRelief) {
+                            var tNow = comp.time;
+                            opProp.setValueAtTime(tNow, 0);
+                            opProp.setValueAtTime(tNow + 1.5, targetOp);
+                            applyEasyEase(opProp);
+                        } else {
+                            opProp.setValue(targetOp);
+                        }
                     }
                 }
 
                 app.endUndoGroup();
                 return JSON.stringify({
                     ok: true,
-                    message: "🏔️ Tam Ekran 3D Kabartma (Hillshade + Heightmap) sorunsuz şekilde After Effects'e uygulandı!"
+                    message: "🏔️ Tam Ekran 3D Kabartma (Hillshade + Heightmap" + (data.animateRelief ? " + 1.5s Kabartma Animasyonu" : "") + ") After Effects'e uygulandı!"
                 });
             } catch (err) {
                 app.endUndoGroup();

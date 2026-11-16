@@ -1430,6 +1430,13 @@ Antalya, 36.8969, 30.7133, 2688004, #f43f5e</textarea>
                 <label class="gl-3d-exag-label">Kabartma: <strong id="lbl3DExagVal">2.5x</strong>
                     <input type="range" id="inp3DExagSlider" min="0.5" max="8.0" step="0.25" value="2.5" />
                 </label>
+                <label class="gl-3d-exag-label" title="Güneş Işığı Yönü (Hillshade Sun Angle)">☀️ <strong id="lbl3DSunVal">315°</strong>
+                    <input type="range" id="inp3DSunSlider" min="0" max="360" step="15" value="315" />
+                </label>
+                <label class="gl-3d-exag-label" style="cursor:pointer;" title="AE'ye aktarırken kabartmayı 0'dan %100'e animasyonlu çıkar">
+                    <input type="checkbox" id="chk3DAnimateRelief" checked /> Animasyonlu Çıkış
+                </label>
+                <button id="btn3DAddKeyframe" class="gl-toolbar-btn gl-keyframe-btn" title="Bu 3D kamera açısını (Pitch/Bearing/Zoom) AE zaman çizelgesine Keyframe olarak ekle">◆ 3D Keyframe</button>
                 <button id="btnSend3DToAE" class="gl-toolbar-btn gl-finalize-btn" title="Bu bölgenin 3D Kabartma & Hillshade katmanlarını After Effects'e aktar">🎬 AE'ye 3D Aktar</button>
                 <button id="btnExit3DMode" class="gl-toolbar-btn gl-keyframe-btn" title="2D Harita Düzenleyicisine Dön">✕ 2D'ye Dön</button>
             </div>
