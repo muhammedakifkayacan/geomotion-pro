@@ -1,10 +1,10 @@
 {
-  "version": "3.0.0",
+  "version": "3.0.1",
   "name": "GeoMotion Pro",
-  "releaseDate": "2026-11-13",
+  "releaseDate": "2026-11-16",
   "minAEVersion": "13.0",
   "githubRepo": "muhammedakifkayacan/geomotion-pro",
-  "changelog": "• GeoMotion Pro v3.0 ilk kararlı açık kaynak sürümü.\n• Yapay Zekâ Copilot ile Türkçe/İngilizce doğal dille harita animasyonu.\n• 3D Tilt, Bearing ve GEO_WORLD_ANCHOR kamera rigi.\n• Akıllı Minimum Zoom Kısıtlaması (Z >= 2.8) ile haritanın kompozisyon dışına taşması engellendi.\n• Otomatik OSRM kara yolu & Great-Circle hava yolu rota motoru.\n• Nominatim OSM vektörel ülke ve şehir sınır çizici.",
+  "changelog": "• After Effects açılışında otomatik kompozisyon (Mapcomp 1) oluşturma sorunu giderildi.\n• Pin & Etiketler için 2D toComp() ekran uzayı sistemi eklendi (3B harita tarafından kesilme sorunu çözüldü; eski pinler Finalize ile otomatik güncellenir).\n• Çift yönlü AE Timeline ↔ Önizleme senkronizasyonu eklendi.\n• Kıyı il ve ülkeler için 'Denizi Dahil Et' seçeneği ve temiz kara sınırı (ADM1) desteği eklendi.\n• Full-Panel İnteraktif 3D Kabartma Modu + Çoklu-Zoom Hillshade piramidi eklendi.\n• Kılavuz çerçeve ile AE kompozisyon zoom/kadraj eşleşmesi 1:1 kalibre edildi.",
   "downloads": {
     "mac": "https://github.com/{repo}/releases/latest/download/GeoMotion_Pro_v3.0_macOS_Installer.dmg",
     "win": "https://github.com/{repo}/releases/latest/download/GeoMotion_Pro_v3.0_Windows_Setup.exe",
