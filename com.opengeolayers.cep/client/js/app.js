@@ -2476,7 +2476,7 @@
     // =========================================================================
     // GEOUPDATER: AUTOMATIC & ON-DEMAND GITHUB UPDATE ENGINE
     // =========================================================================
-    var CURRENT_VERSION = "3.0.0";
+    var CURRENT_VERSION = "3.0.1";
     var GeoUpdater = {
         currentVersion: CURRENT_VERSION,
         defaultRepo: "muhammedakifkayacan/geomotion-pro",
