@@ -3547,7 +3547,14 @@
             lastPackage: null
         };
 
-        function buildTerrariumTerrainPackage(lat, lon, rawZoom, provider) {
+        function buildTerrariumTerrainPackage(lat, lon, rawZoom, provider, halfCols, halfRows) {
+            halfCols = (halfCols !== undefined) ? halfCols : 1;
+            halfRows = (halfRows !== undefined) ? halfRows : 1;
+            var cols = halfCols * 2 + 1;
+            var rows = halfRows * 2 + 1;
+            var pxW = cols * 256;
+            var pxH = rows * 256;
+
             var z = Math.min(13, Math.max(4, Math.round(rawZoom)));
             var n = Math.pow(2, z);
             var cx = Math.floor((lon + 180.0) / 360.0 * n);
@@ -3556,26 +3563,26 @@
             var centerCoord = tileXYToCenterLatLon(cx, cy, z);
 
             var demCanvas = document.createElement("canvas");
-            demCanvas.width = 768;
-            demCanvas.height = 768;
+            demCanvas.width = pxW;
+            demCanvas.height = pxH;
             var demCtx = demCanvas.getContext("2d");
 
             var texCanvas = document.createElement("canvas");
-            texCanvas.width = 768;
-            texCanvas.height = 768;
+            texCanvas.width = pxW;
+            texCanvas.height = pxH;
             var texCtx = texCanvas.getContext("2d");
             texCtx.fillStyle = "#0b1120";
-            texCtx.fillRect(0, 0, 768, 768);
+            texCtx.fillRect(0, 0, pxW, pxH);
 
             var jobs = [];
-            for (var dx = -1; dx <= 1; dx++) {
-                for (var dy = -1; dy <= 1; dy++) {
+            for (var dx = -halfCols; dx <= halfCols; dx++) {
+                for (var dy = -halfRows; dy <= halfRows; dy++) {
                     (function (ox, oy) {
                         var ty = cy + oy;
                         if (ty < 0 || ty >= n) return;
                         var tx = ((cx + ox) % n + n) % n;
-                        var destX = (ox + 1) * 256;
-                        var destY = (oy + 1) * 256;
+                        var destX = (ox + halfCols) * 256;
+                        var destY = (oy + halfRows) * 256;
 
                         jobs.push(fetchTileImageWithRetry(terrariumProvider, z, tx, ty, 2).then(function (res) {
                             if (res && res.img) {
@@ -3592,48 +3599,49 @@
             }
 
             return Promise.all(jobs).then(function () {
-                var demData = demCtx.getImageData(0, 0, 768, 768).data;
-                var gridN = 96;
-                var elevs = new Float32Array(gridN * gridN);
+                var demData = demCtx.getImageData(0, 0, pxW, pxH).data;
+                var gridW = halfCols > 1 ? 192 : 96;
+                var gridH = halfRows > 1 ? 144 : 96;
+                var elevs = new Float32Array(gridW * gridH);
                 var minE = 99999;
                 var maxE = -99999;
 
-                for (var r = 0; r < gridN; r++) {
-                    var py = Math.min(767, Math.floor((r / (gridN - 1)) * 767));
-                    for (var c = 0; c < gridN; c++) {
-                        var px = Math.min(767, Math.floor((c / (gridN - 1)) * 767));
-                        var idx = (py * 768 + px) * 4;
+                for (var r = 0; r < gridH; r++) {
+                    var py = Math.min(pxH - 1, Math.floor((r / (gridH - 1)) * (pxH - 1)));
+                    for (var c = 0; c < gridW; c++) {
+                        var px = Math.min(pxW - 1, Math.floor((c / (gridW - 1)) * (pxW - 1)));
+                        var idx = (py * pxW + px) * 4;
                         var R = demData[idx];
                         var G = demData[idx + 1];
                         var B = demData[idx + 2];
                         var elev = (R * 256.0 + G + B / 256.0) - 32768.0;
                         if (elev < -500 || elev > 9000) elev = 0;
-                        elevs[r * gridN + c] = elev;
+                        elevs[r * gridW + c] = elev;
                         if (elev < minE) minE = elev;
                         if (elev > maxE) maxE = elev;
                     }
                 }
                 if (maxE <= minE + 10) maxE = minE + 500;
 
-                // Build 1024x1024 Grayscale Heightmap & 3D Sun-Lit Hillshade canvases for AE
+                // Build exact pxW x pxH Grayscale Heightmap & 3D Sun-Lit Hillshade canvases for AE
                 var hmSmall = document.createElement("canvas");
-                hmSmall.width = gridN;
-                hmSmall.height = gridN;
+                hmSmall.width = gridW;
+                hmSmall.height = gridH;
                 var hmSCtx = hmSmall.getContext("2d");
-                var hmImg = hmSCtx.createImageData(gridN, gridN);
+                var hmImg = hmSCtx.createImageData(gridW, gridH);
 
                 var hsSmall = document.createElement("canvas");
-                hsSmall.width = gridN;
-                hsSmall.height = gridN;
+                hsSmall.width = gridW;
+                hsSmall.height = gridH;
                 var hsSCtx = hsSmall.getContext("2d");
-                var hsImg = hsSCtx.createImageData(gridN, gridN);
+                var hsImg = hsSCtx.createImageData(gridW, gridH);
 
                 var span = maxE - minE;
                 var sunX = -0.58, sunY = -0.58, sunZ = 0.57;
 
-                for (var rr = 0; rr < gridN; rr++) {
-                    for (var cc = 0; cc < gridN; cc++) {
-                        var i = rr * gridN + cc;
+                for (var rr = 0; rr < gridH; rr++) {
+                    for (var cc = 0; cc < gridW; cc++) {
+                        var i = rr * gridW + cc;
                         var v = elevs[i];
                         var norm = Math.max(0, Math.min(255, Math.round(((v - minE) / span) * 255)));
                         hmImg.data[i * 4] = norm;
@@ -3641,19 +3649,21 @@
                         hmImg.data[i * 4 + 2] = norm;
                         hmImg.data[i * 4 + 3] = 255;
 
-                        var cL = elevs[rr * gridN + Math.max(0, cc - 1)];
-                        var cR = elevs[rr * gridN + Math.min(gridN - 1, cc + 1)];
-                        var cU = elevs[Math.max(0, rr - 1) * gridN + cc];
-                        var cD = elevs[Math.min(gridN - 1, rr + 1) * gridN + cc];
-                        var dzx = ((cR - cL) / span) * 14.0;
-                        var dzy = ((cD - cU) / span) * 14.0;
+                        var cL = elevs[rr * gridW + Math.max(0, cc - 1)];
+                        var cR = elevs[rr * gridW + Math.min(gridW - 1, cc + 1)];
+                        var cU = elevs[Math.max(0, rr - 1) * gridW + cc];
+                        var cD = elevs[Math.min(gridH - 1, rr + 1) * gridW + cc];
+                        var dzx = ((cR - cL) / span) * 16.0;
+                        var dzy = ((cD - cU) / span) * 16.0;
                         var nx = -dzx, ny = -dzy, nz = 1.0;
                         var len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1.0;
-                        var dot = Math.max(0.15, Math.min(1.0, ((nx / len) * sunX + (ny / len) * sunY + (nz / len) * sunZ) * 0.85 + 0.35));
-                        var shade = Math.round(dot * 255);
+                        // Neutral mid-gray (128) for flat terrain so Soft Light never washes out plains/sea
+                        var dot = ((nx / len) * sunX + (ny / len) * sunY + (nz / len) * sunZ);
+                        var flatDot = sunZ; // 0.57 when flat
+                        var shade = Math.max(20, Math.min(245, Math.round(128 + (dot - flatDot) * 260)));
                         hsImg.data[i * 4] = shade;
                         hsImg.data[i * 4 + 1] = shade;
-                        hsImg.data[i * 4 + 2] = Math.min(255, shade + 8);
+                        hsImg.data[i * 4 + 2] = shade;
                         hsImg.data[i * 4 + 3] = 255;
                     }
                 }
@@ -3661,26 +3671,26 @@
                 hsSCtx.putImageData(hsImg, 0, 0);
 
                 var hmHi = document.createElement("canvas");
-                hmHi.width = 1024;
-                hmHi.height = 1024;
+                hmHi.width = pxW;
+                hmHi.height = pxH;
                 var hmHCtx = hmHi.getContext("2d");
                 hmHCtx.imageSmoothingEnabled = true;
                 hmHCtx.imageSmoothingQuality = "high";
-                hmHCtx.drawImage(hmSmall, 0, 0, 1024, 1024);
+                hmHCtx.drawImage(hmSmall, 0, 0, pxW, pxH);
 
                 var hsHi = document.createElement("canvas");
-                hsHi.width = 1024;
-                hsHi.height = 1024;
+                hsHi.width = pxW;
+                hsHi.height = pxH;
                 var hsHCtx = hsHi.getContext("2d");
                 hsHCtx.imageSmoothingEnabled = true;
                 hsHCtx.imageSmoothingQuality = "high";
-                hsHCtx.drawImage(hsSmall, 0, 0, 1024, 1024);
+                hsHCtx.drawImage(hsSmall, 0, 0, pxW, pxH);
 
                 return {
                     z: z,
                     centerLat: centerCoord.lat,
                     centerLon: centerCoord.lon,
-                    gridN: gridN,
+                    gridN: gridW,
                     elevs: elevs,
                     minE: minE,
                     maxE: maxE,
@@ -3979,10 +3989,16 @@
         var btnSend3DAE = document.getElementById("btnSend3DToAE");
         if (btnSend3DAE) {
             btnSend3DAE.addEventListener("click", function () {
-                if (terrain3DState.lastPackage) {
-                    exportTerrainPackageToAE(terrain3DState.lastPackage, terrain3DState.exag);
+                var c = map.getCenter();
+                var z = map.getZoom();
+                var provKey = document.getElementById("tileProviderSelect").value || "esri_sat";
+                var prov = TILE_PROVIDERS[provKey] || TILE_PROVIDERS.esri_sat;
+                var stLbl = document.getElementById("terrain3DStatus");
+                if (stLbl) stLbl.textContent = "Tam Ekran 9x7 3D Rölyef AE'ye hazırlanıyor...";
+                buildTerrariumTerrainPackage(c.lat, c.lng, z, prov, 4, 3).then(function (fullPkg) {
+                    exportTerrainPackageToAE(fullPkg, terrain3DState.exag);
                     closeInteractive3DMode();
-                }
+                });
             });
         }
 
@@ -3995,8 +4011,8 @@
                 var provKey = document.getElementById("tileProviderSelect").value || "esri_sat";
                 var prov = TILE_PROVIDERS[provKey] || TILE_PROVIDERS.esri_sat;
                 var exag = parseFloat(document.getElementById("terrainExaggeration").value) || 2.5;
-                setStatus("🗻 SRTM Terrarium DEM üzerinden 3D Hillshade + Heightmap + Displacement oluşturuluyor...");
-                buildTerrariumTerrainPackage(c.lat, c.lng, z, prov)
+                setStatus("🗻 Tam Ekran 9x7 SRTM DEM üzerinden 3D Hillshade + Heightmap oluşturuluyor...");
+                buildTerrariumTerrainPackage(c.lat, c.lng, z, prov, 4, 3)
                     .then(function (pkg) {
                         exportTerrainPackageToAE(pkg, exag);
                     })

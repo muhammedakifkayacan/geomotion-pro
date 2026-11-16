@@ -2409,22 +2409,20 @@ var GeoMotionHost = (function () {
                         var footage = app.project.importFile(io);
                         hmLayer = comp.layers.add(footage);
                         hmLayer.name = "MAP_HEIGHTMAP_DISPLACEMENT";
-                        hmLayer.comment = "Grayscale Elevation Heightmap (SRTM DEM)";
+                        hmLayer.comment = "Grayscale Elevation Heightmap (SRTM DEM - Compatible with FreeForm Pro, Mir, Helium)";
                         hmLayer.label = 14;
-                        // Scale 1024px heightmap to cover the 768px (3x3) geographic span
-                        var hmScale = atlasScale * (768.0 / 1024.0);
                         attachCoplanarToAnchor(
                             hmLayer,
                             rig.anchor,
                             [xy[0], xy[1], -0.2],
-                            [hmScale, hmScale, 100]
+                            [atlasScale, atlasScale, 100]
                         );
                         hmLayer.property("Transform").property("Opacity").setValue(0);
                         hmLayer.enabled = false;
                     }
                 }
 
-                // Import 3D Sun-Lit Hillshade Relief Layer (immediate sculpted 3D mountain shading!)
+                // Import 3D Sun-Lit Hillshade Relief Layer (full 2304x1792 seamless coverage, Soft Light 3D shading)
                 if (data.hillshadePath) {
                     var hf = new File(data.hillshadePath);
                     if (hf.exists) {
@@ -2434,41 +2432,21 @@ var GeoMotionHost = (function () {
                         hsLayer.name = "MAP_3D_HILLSHADE";
                         hsLayer.comment = "3D Shaded Terrain Relief (SRTM DEM Sun-Lit Hillshade)";
                         hsLayer.label = 9;
-                        var hsScale = atlasScale * (768.0 / 1024.0);
                         attachCoplanarToAnchor(
                             hsLayer,
                             rig.anchor,
                             [xy[0], xy[1], -0.4],
-                            [hsScale, hsScale, 100]
+                            [atlasScale, atlasScale, 100]
                         );
-                        try { hsLayer.blendingMode = BlendingMode.OVERLAY; } catch (eBm) {}
-                        hsLayer.property("Transform").property("Opacity").setValue(Math.min(88, Math.round(38 + exag * 10)));
+                        try { hsLayer.blendingMode = BlendingMode.SOFT_LIGHT; } catch (eBm) {}
+                        hsLayer.property("Transform").property("Opacity").setValue(Math.min(85, Math.round(40 + exag * 9)));
                     }
-                }
-
-                // Apply native AE Displacement Map directly above tiles so mountains shift with 3D parallax!
-                if (hmLayer) {
-                    var dispLayer = comp.layers.addSolid([1, 1, 1], "MAP_3D_RELIEF_DISPLACEMENT", comp.width, comp.height, 1.0);
-                    dispLayer.adjustmentLayer = true;
-                    dispLayer.label = 11;
-                    dispLayer.comment = "Native 3D Terrain Displacement driven by MAP_HEIGHTMAP_DISPLACEMENT";
-                    try {
-                        var dispFx = dispLayer.property("ADBE Effect Parade").addProperty("ADBE Displacement Map");
-                        if (dispFx) {
-                            // 1 = Layer index of MAP_HEIGHTMAP_DISPLACEMENT
-                            try { dispFx.property("ADBE Displacement Map-0001").setValue(hmLayer.index); } catch (eP1) {}
-                            try { dispFx.property("ADBE Displacement Map-0002").setValue(5); } catch (eP2) {} // Luminance
-                            try { dispFx.property("ADBE Displacement Map-0003").setValue(Math.round(8 * exag)); } catch (eP3) {}
-                            try { dispFx.property("ADBE Displacement Map-0004").setValue(5); } catch (eP4) {} // Luminance
-                            try { dispFx.property("ADBE Displacement Map-0005").setValue(Math.round(14 * exag)); } catch (eP5) {}
-                        }
-                    } catch (eDisp) {}
                 }
 
                 app.endUndoGroup();
                 return JSON.stringify({
                     ok: true,
-                    message: "🏔️ 3D Kabartma (Hillshade + Displacement Map + Heightmap) After Effects sahnesine uygulandı!"
+                    message: "🏔️ Tam Ekran 3D Kabartma (Hillshade + Heightmap) sorunsuz şekilde After Effects'e uygulandı!"
                 });
             } catch (err) {
                 app.endUndoGroup();
