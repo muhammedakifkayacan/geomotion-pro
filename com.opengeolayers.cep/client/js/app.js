@@ -3544,6 +3544,7 @@
             pitch: 0.72,
             dist: 2.35,
             exag: 2.5,
+            sunAzimuth: 315,
             lastPackage: null
         };
 
@@ -3637,7 +3638,10 @@
                 var hsImg = hsSCtx.createImageData(gridW, gridH);
 
                 var span = maxE - minE;
-                var sunX = -0.58, sunY = -0.58, sunZ = 0.57;
+                var sunRad = (terrain3DState.sunAzimuth || 315) * Math.PI / 180.0;
+                var sunX = Math.sin(sunRad) * 0.82;
+                var sunY = -Math.cos(sunRad) * 0.82;
+                var sunZ = 0.57;
 
                 for (var rr = 0; rr < gridH; rr++) {
                     for (var cc = 0; cc < gridW; cc++) {
@@ -3735,11 +3739,12 @@
             var fsSrc = [
                 "precision mediump float;",
                 "uniform sampler2D uTex;",
+                "uniform vec3 uSunDir;",
                 "varying vec2 vUv;",
                 "varying vec3 vNorm;",
                 "void main() {",
                 "  vec4 col = texture2D(uTex, vUv);",
-                "  vec3 sun = normalize(vec3(-0.6, 0.75, -0.5));",
+                "  vec3 sun = normalize(uSunDir);",
                 "  float diff = clamp(dot(normalize(vNorm), sun), 0.0, 1.0);",
                 "  float light = 0.52 + diff * 0.65;",
                 "  gl_FragColor = vec4(col.rgb * light, 1.0);",
@@ -3827,6 +3832,7 @@
 
             var uMvp = gl.getUniformLocation(prog, "uMvp");
             var uExag = gl.getUniformLocation(prog, "uExag");
+            var uSunDir = gl.getUniformLocation(prog, "uSunDir");
 
             function mat4Perspective(fov, aspect, near, far) {
                 var f = 1.0 / Math.tan(fov / 2);
@@ -3877,6 +3883,8 @@
 
                 gl.uniformMatrix4fv(uMvp, false, mvp);
                 gl.uniform1f(uExag, terrain3DState.exag);
+                var sRad = (terrain3DState.sunAzimuth || 315) * Math.PI / 180.0;
+                if (uSunDir) gl.uniform3f(uSunDir, Math.sin(sRad), 0.75, -Math.cos(sRad));
                 gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
 
                 terrain3DState.rafId = requestAnimationFrame(renderFrame);
@@ -3960,6 +3968,42 @@
             });
         }
 
+        var inpSun3D = document.getElementById("inp3DSunSlider");
+        if (inpSun3D) {
+            inpSun3D.addEventListener("input", function () {
+                var deg = parseFloat(this.value) || 315;
+                terrain3DState.sunAzimuth = deg;
+                var lbl = document.getElementById("lbl3DSunVal");
+                if (lbl) lbl.textContent = Math.round(deg) + "°";
+            });
+        }
+
+        var btn3DKey = document.getElementById("btn3DAddKeyframe");
+        if (btn3DKey) {
+            btn3DKey.addEventListener("click", function () {
+                // Convert WebGL 3D orbit angles into AE Mapcomp Pitch (0..60) & Bearing (-180..180)
+                var aePitch = Math.max(0, Math.min(60, Math.round(90 - (terrain3DState.pitch * 180 / Math.PI))));
+                var aeBearing = Math.round((terrain3DState.yaw * 180 / Math.PI) % 360);
+                if (aeBearing > 180) aeBearing -= 360;
+                if (aeBearing < -180) aeBearing += 360;
+                var zoomDelta = Math.log(2.35 / Math.max(0.8, terrain3DState.dist)) / Math.LN2;
+
+                document.getElementById("inpViewPitch").value = aePitch;
+                document.getElementById("inpViewBearing").value = aeBearing;
+                var badge = document.getElementById("lblTiltBadge");
+                if (badge) badge.textContent = aePitch + "\u00b0 Tilt";
+                updateMapPerspectivePreview();
+
+                var payload = getMapcompSettings();
+                payload.zoom = Math.min(18.5, Math.max(2.8, payload.zoom + zoomDelta));
+                payload.setKeyframe = true;
+                callHost("setMapcompViewKeyframe", payload, function () {
+                    var stLbl = document.getElementById("terrain3DStatus");
+                    if (stLbl) stLbl.textContent = "◆ 3D Keyframe eklendi (Pitch " + aePitch + "°, Bearing " + aeBearing + "°)";
+                });
+            });
+        }
+
         function exportTerrainPackageToAE(pkg, exagVal) {
             if (typeof window.require !== "function") {
                 setStatus("3D DEM oluşturuldu (Min: " + Math.round(pkg.minE) + "m, Max: " + Math.round(pkg.maxE) + "m).");
@@ -3976,6 +4020,7 @@
             fs.writeFileSync(hmPath, Buffer.from(pkg.hmCanvas.toDataURL("image/png").replace(/^data:image\/png;base64,/, ""), "base64"));
             fs.writeFileSync(hsPath, Buffer.from(pkg.hsCanvas.toDataURL("image/png").replace(/^data:image\/png;base64,/, ""), "base64"));
 
+            var animChk = document.getElementById("chk3DAnimateRelief");
             var payload = getMapcompSettings();
             payload.filePath = hmPath;
             payload.hillshadePath = hsPath;
@@ -3983,6 +4028,7 @@
             payload.centerLat = pkg.centerLat;
             payload.centerLon = pkg.centerLon;
             payload.exaggeration = exagVal || 2.5;
+            payload.animateRelief = animChk ? animChk.checked : true;
             callHost("importHeightmapAnd3DRig", payload);
         }
 
