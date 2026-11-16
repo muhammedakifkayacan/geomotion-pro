@@ -980,17 +980,18 @@ var GeoMotionHost = (function () {
                         message: "CTI (" + t.toFixed(2) + "s) konumuna Mapcomp View Keyframe (◆) eklendi!"
                     });
                 } else {
+                    var liveT = comp.time;
                     function liveSyncProp(prop, val) {
                         if (prop.numKeys === 0) {
                             prop.setValue(val);
                         } else if (prop.numKeys === 1) {
                             prop.setValueAtKey(1, val);
                         } else {
-                            var nk = prop.nearestKeyIndex(t);
-                            if (Math.abs(prop.keyTime(nk) - t) < 0.15) {
+                            var nk = prop.nearestKeyIndex(liveT);
+                            if (Math.abs(prop.keyTime(nk) - liveT) < 0.15) {
                                 prop.setValueAtKey(nk, val);
                             } else {
-                                prop.setValueAtTime(t, val);
+                                prop.setValueAtTime(liveT, val);
                             }
                         }
                     }
