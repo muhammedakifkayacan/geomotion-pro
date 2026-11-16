@@ -450,6 +450,42 @@ var GeoMotionHost = (function () {
             }
         } catch (eMbComp) {}
 
+        // Auto-upgrade any legacy 3D PIN_ & PIN_TEXT_ layers to 2D toComp() screen-space so they never get cropped by 3D map tiles
+        try {
+            for (var pIdx = 1; pIdx <= comp.numLayers; pIdx++) {
+                var pLyr = comp.layer(pIdx);
+                if (pLyr.name.indexOf("PIN_") === 0 && pLyr.name.indexOf("PIN_TEXT_") !== 0 && pLyr.threeDLayer) {
+                    var pPosVal = pLyr.property("Transform").property("Position").value;
+                    var localX = pPosVal[0] || (comp.width / 2);
+                    var localY = pPosVal[1] || (comp.height / 2);
+                    pLyr.threeDLayer = false;
+                    pLyr.parent = null;
+                    pLyr.property("Transform").property("Position").expression = [
+                        "function getAnchor(){ try { return thisComp.layer('MAP_WORLD_ANCHOR'); } catch(e){ return thisComp.layer('GEO_WORLD_ANCHOR'); } }",
+                        "var p = getAnchor().toComp([" + localX.toFixed(2) + ", " + localY.toFixed(2) + ", 0]);",
+                        "[p[0], p[1]];"
+                    ].join("\n");
+                    pLyr.property("Transform").property("Scale").expression = "";
+                    pLyr.property("Transform").property("Scale").setValue([100, 100]);
+                    pLyr.property("Transform").property("Rotation").expression = "";
+                    pLyr.property("Transform").property("Rotation").setValue(0);
+                    pLyr.comment = "Auto-upgraded 2D Screen-Space Pin via toComp()";
+                }
+            }
+            for (var tIdx = 1; tIdx <= comp.numLayers; tIdx++) {
+                var tLyr = comp.layer(tIdx);
+                if (tLyr.name.indexOf("PIN_TEXT_") === 0 && tLyr.threeDLayer) {
+                    var tPosVal = tLyr.property("Transform").property("Position").value;
+                    tLyr.threeDLayer = false;
+                    tLyr.property("Transform").property("Position").setValue([0, tPosVal[1] || -32]);
+                    tLyr.property("Transform").property("Scale").expression = "";
+                    tLyr.property("Transform").property("Scale").setValue([100, 100]);
+                    tLyr.property("Transform").property("Rotation").expression = "";
+                    tLyr.property("Transform").property("Rotation").setValue(0);
+                }
+            }
+        } catch (ePinUp) {}
+
         return {
             controller: ctrlLayer,
             anchor: anchorLayer,
@@ -581,7 +617,43 @@ var GeoMotionHost = (function () {
                     var x = Math.floor((lon + 180.0) / 360.0 * n);
                     var latRad = lat * Math.PI / 180.0;
                     var y = Math.floor((1.0 - Math.log(Math.tan(latRad) + 1.0 / Math.cos(latRad)) / Math.PI) / 2.0 * n);
-                    return { x: x, y: y };
+                    // Auto-upgrade any legacy 3D PIN_ & PIN_TEXT_ layers to 2D toComp() screen-space so they never get cropped by 3D map tiles
+        try {
+            for (var pIdx = 1; pIdx <= comp.numLayers; pIdx++) {
+                var pLyr = comp.layer(pIdx);
+                if (pLyr.name.indexOf("PIN_") === 0 && pLyr.name.indexOf("PIN_TEXT_") !== 0 && pLyr.threeDLayer) {
+                    var pPosVal = pLyr.property("Transform").property("Position").value;
+                    var localX = pPosVal[0] || (comp.width / 2);
+                    var localY = pPosVal[1] || (comp.height / 2);
+                    pLyr.threeDLayer = false;
+                    pLyr.parent = null;
+                    pLyr.property("Transform").property("Position").expression = [
+                        "function getAnchor(){ try { return thisComp.layer('MAP_WORLD_ANCHOR'); } catch(e){ return thisComp.layer('GEO_WORLD_ANCHOR'); } }",
+                        "var p = getAnchor().toComp([" + localX.toFixed(2) + ", " + localY.toFixed(2) + ", 0]);",
+                        "[p[0], p[1]];"
+                    ].join("\n");
+                    pLyr.property("Transform").property("Scale").expression = "";
+                    pLyr.property("Transform").property("Scale").setValue([100, 100]);
+                    pLyr.property("Transform").property("Rotation").expression = "";
+                    pLyr.property("Transform").property("Rotation").setValue(0);
+                    pLyr.comment = "Auto-upgraded 2D Screen-Space Pin via toComp()";
+                }
+            }
+            for (var tIdx = 1; tIdx <= comp.numLayers; tIdx++) {
+                var tLyr = comp.layer(tIdx);
+                if (tLyr.name.indexOf("PIN_TEXT_") === 0 && tLyr.threeDLayer) {
+                    var tPosVal = tLyr.property("Transform").property("Position").value;
+                    tLyr.threeDLayer = false;
+                    tLyr.property("Transform").property("Position").setValue([0, tPosVal[1] || -32]);
+                    tLyr.property("Transform").property("Scale").expression = "";
+                    tLyr.property("Transform").property("Scale").setValue([100, 100]);
+                    tLyr.property("Transform").property("Rotation").expression = "";
+                    tLyr.property("Transform").property("Rotation").setValue(0);
+                }
+            }
+        } catch (ePinUp) {}
+
+        return { x: x, y: y };
                 }
 
                 function addUniqueView(lat, lon, z, role, timeSec) {
@@ -639,7 +711,43 @@ var GeoMotionHost = (function () {
                             }
                         }
                     }
-                    return { lat: lat, lon: lon, zoom: zCur };
+                    // Auto-upgrade any legacy 3D PIN_ & PIN_TEXT_ layers to 2D toComp() screen-space so they never get cropped by 3D map tiles
+        try {
+            for (var pIdx = 1; pIdx <= comp.numLayers; pIdx++) {
+                var pLyr = comp.layer(pIdx);
+                if (pLyr.name.indexOf("PIN_") === 0 && pLyr.name.indexOf("PIN_TEXT_") !== 0 && pLyr.threeDLayer) {
+                    var pPosVal = pLyr.property("Transform").property("Position").value;
+                    var localX = pPosVal[0] || (comp.width / 2);
+                    var localY = pPosVal[1] || (comp.height / 2);
+                    pLyr.threeDLayer = false;
+                    pLyr.parent = null;
+                    pLyr.property("Transform").property("Position").expression = [
+                        "function getAnchor(){ try { return thisComp.layer('MAP_WORLD_ANCHOR'); } catch(e){ return thisComp.layer('GEO_WORLD_ANCHOR'); } }",
+                        "var p = getAnchor().toComp([" + localX.toFixed(2) + ", " + localY.toFixed(2) + ", 0]);",
+                        "[p[0], p[1]];"
+                    ].join("\n");
+                    pLyr.property("Transform").property("Scale").expression = "";
+                    pLyr.property("Transform").property("Scale").setValue([100, 100]);
+                    pLyr.property("Transform").property("Rotation").expression = "";
+                    pLyr.property("Transform").property("Rotation").setValue(0);
+                    pLyr.comment = "Auto-upgraded 2D Screen-Space Pin via toComp()";
+                }
+            }
+            for (var tIdx = 1; tIdx <= comp.numLayers; tIdx++) {
+                var tLyr = comp.layer(tIdx);
+                if (tLyr.name.indexOf("PIN_TEXT_") === 0 && tLyr.threeDLayer) {
+                    var tPosVal = tLyr.property("Transform").property("Position").value;
+                    tLyr.threeDLayer = false;
+                    tLyr.property("Transform").property("Position").setValue([0, tPosVal[1] || -32]);
+                    tLyr.property("Transform").property("Scale").expression = "";
+                    tLyr.property("Transform").property("Scale").setValue([100, 100]);
+                    tLyr.property("Transform").property("Rotation").expression = "";
+                    tLyr.property("Transform").property("Rotation").setValue(0);
+                }
+            }
+        } catch (ePinUp) {}
+
+        return { lat: lat, lon: lon, zoom: zCur };
                 }
 
                 var active = getOrCreateActiveGeoComp(data);
