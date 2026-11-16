@@ -107,6 +107,9 @@
                 <button id="btnToggleLanguage" class="gl-icon-btn gl-lang-btn" title="Panel Dilini Değiştir / Switch UI Language (TR / EN)">
                     <span id="lblCurrentLang">TR</span>
                 </button>
+                <button id="btnToggle3DMode" class="gl-toolbar-btn gl-keyframe-btn" title="Tam Ekran İnteraktif 3D Kabartma Harita Moduna Geç">
+                    <span>🏔️ 3D Mod</span>
+                </button>
                 <button id="btnSetViewKeyframe" class="gl-toolbar-btn gl-keyframe-btn" title="Set Mapcomp View Keyframe at CTI (Latitude, Longitude, Zoom, Pitch, Bearing)">
                     <span class="diamond-icon">◆</span>
                     <span id="lblKeyframeBtn">Keyframe</span>
@@ -859,6 +862,9 @@
                     </div>
                 </div>
                 <div class="gl-row-btns">
+                    <button id="btnTabEnter3DMode" class="gl-btn-primary-wide">🏔️ 3D Kabartma Moduna Geç (Tam Ekran)</button>
+                </div>
+                <div class="gl-row-btns" style="margin-top:6px;">
                     <button id="btnGenerate3DTerrain" class="gl-btn-secondary">Build 3D DEM Relief</button>
                     <button id="btnExportHeightmapRig" class="gl-btn-secondary" title="Generate Grayscale Heightmap PNG &amp; Import for FreeForm Pro / Mir / Helium / Displacement">🗻 Export Heightmap Rig</button>
                     <button id="btnCreateDataChart" class="gl-btn-primary-wide">Draw 3D Data Bars</button>
@@ -1412,6 +1418,31 @@ Antalya, 36.8969, 30.7133, 2688004, #f43f5e</textarea>
         </div>
     </div>
 
+
+    <!-- FULL-PANEL INTERACTIVE 3D TERRAIN RELIEF VIEWPORT (WebGL DEM) -->
+    <div id="terrain3DModalOverlay" class="gl-3d-overlay hidden">
+        <div class="gl-3d-hud-top">
+            <div class="gl-3d-title-wrap">
+                <span class="gl-3d-title">🏔️ 3D Kabartma Modu</span>
+                <span id="terrain3DStatus" class="gl-3d-status">Hazır</span>
+            </div>
+            <div class="gl-3d-controls">
+                <label class="gl-3d-exag-label">Kabartma: <strong id="lbl3DExagVal">2.5x</strong>
+                    <input type="range" id="inp3DExagSlider" min="0.5" max="8.0" step="0.25" value="2.5" />
+                </label>
+                <button id="btnSend3DToAE" class="gl-toolbar-btn gl-finalize-btn" title="Bu bölgenin 3D Kabartma & Hillshade katmanlarını After Effects'e aktar">🎬 AE'ye 3D Aktar</button>
+                <button id="btnExit3DMode" class="gl-toolbar-btn gl-keyframe-btn" title="2D Harita Düzenleyicisine Dön">✕ 2D'ye Dön</button>
+            </div>
+        </div>
+        <canvas id="terrain3DCanvas" class="gl-3d-canvas"></canvas>
+        <div class="gl-3d-hud-bottom">
+            <span>🖱️ Sol Tık Sürükle: 3D Döndür (Orbit)</span>
+            <span>•</span>
+            <span>🔍 Tekerlek: Yakınlaş / Uzaklaş</span>
+            <span>•</span>
+            <span>🏔️ Gerçek SRTM DEM Yükseklik Verisi</span>
+        </div>
+    </div>
 
     </body>
 </html>

@@ -3530,73 +3530,475 @@
             callHost("createGeoDataChart", payload);
         });
 
-        // 3D Landscape Heightmap Rig (Helium / FreeForm Pro / Mir / Plexus Grayscale DEM Displacement)
+        // 3D Terrain Mode (Full-Panel Interactive WebGL DEM + AE Hillshade/Displacement Rig)
+        var terrariumProvider = {
+            name: "AWS Terrarium DEM",
+            url: "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+            subdomains: ["a"]
+        };
+
+        var terrain3DState = {
+            active: false,
+            rafId: 0,
+            yaw: 0.35,
+            pitch: 0.72,
+            dist: 2.35,
+            exag: 2.5,
+            lastPackage: null
+        };
+
+        function buildTerrariumTerrainPackage(lat, lon, rawZoom, provider) {
+            var z = Math.min(13, Math.max(4, Math.round(rawZoom)));
+            var n = Math.pow(2, z);
+            var cx = Math.floor((lon + 180.0) / 360.0 * n);
+            var latRad = lat * Math.PI / 180.0;
+            var cy = Math.floor((1.0 - Math.log(Math.tan(latRad) + 1.0 / Math.cos(latRad)) / Math.PI) / 2.0 * n);
+            var centerCoord = tileXYToCenterLatLon(cx, cy, z);
+
+            var demCanvas = document.createElement("canvas");
+            demCanvas.width = 768;
+            demCanvas.height = 768;
+            var demCtx = demCanvas.getContext("2d");
+
+            var texCanvas = document.createElement("canvas");
+            texCanvas.width = 768;
+            texCanvas.height = 768;
+            var texCtx = texCanvas.getContext("2d");
+            texCtx.fillStyle = "#0b1120";
+            texCtx.fillRect(0, 0, 768, 768);
+
+            var jobs = [];
+            for (var dx = -1; dx <= 1; dx++) {
+                for (var dy = -1; dy <= 1; dy++) {
+                    (function (ox, oy) {
+                        var ty = cy + oy;
+                        if (ty < 0 || ty >= n) return;
+                        var tx = ((cx + ox) % n + n) % n;
+                        var destX = (ox + 1) * 256;
+                        var destY = (oy + 1) * 256;
+
+                        jobs.push(fetchTileImageWithRetry(terrariumProvider, z, tx, ty, 2).then(function (res) {
+                            if (res && res.img) {
+                                demCtx.drawImage(res.img, res.sx, res.sy, res.sw, res.sh, destX, destY, 256, 256);
+                            }
+                        }));
+                        jobs.push(fetchTileImageWithRetry(provider, z, tx, ty, 2).then(function (res) {
+                            if (res && res.img) {
+                                texCtx.drawImage(res.img, res.sx, res.sy, res.sw, res.sh, destX, destY, 256, 256);
+                            }
+                        }));
+                    })(dx, dy);
+                }
+            }
+
+            return Promise.all(jobs).then(function () {
+                var demData = demCtx.getImageData(0, 0, 768, 768).data;
+                var gridN = 96;
+                var elevs = new Float32Array(gridN * gridN);
+                var minE = 99999;
+                var maxE = -99999;
+
+                for (var r = 0; r < gridN; r++) {
+                    var py = Math.min(767, Math.floor((r / (gridN - 1)) * 767));
+                    for (var c = 0; c < gridN; c++) {
+                        var px = Math.min(767, Math.floor((c / (gridN - 1)) * 767));
+                        var idx = (py * 768 + px) * 4;
+                        var R = demData[idx];
+                        var G = demData[idx + 1];
+                        var B = demData[idx + 2];
+                        var elev = (R * 256.0 + G + B / 256.0) - 32768.0;
+                        if (elev < -500 || elev > 9000) elev = 0;
+                        elevs[r * gridN + c] = elev;
+                        if (elev < minE) minE = elev;
+                        if (elev > maxE) maxE = elev;
+                    }
+                }
+                if (maxE <= minE + 10) maxE = minE + 500;
+
+                // Build 1024x1024 Grayscale Heightmap & 3D Sun-Lit Hillshade canvases for AE
+                var hmSmall = document.createElement("canvas");
+                hmSmall.width = gridN;
+                hmSmall.height = gridN;
+                var hmSCtx = hmSmall.getContext("2d");
+                var hmImg = hmSCtx.createImageData(gridN, gridN);
+
+                var hsSmall = document.createElement("canvas");
+                hsSmall.width = gridN;
+                hsSmall.height = gridN;
+                var hsSCtx = hsSmall.getContext("2d");
+                var hsImg = hsSCtx.createImageData(gridN, gridN);
+
+                var span = maxE - minE;
+                var sunX = -0.58, sunY = -0.58, sunZ = 0.57;
+
+                for (var rr = 0; rr < gridN; rr++) {
+                    for (var cc = 0; cc < gridN; cc++) {
+                        var i = rr * gridN + cc;
+                        var v = elevs[i];
+                        var norm = Math.max(0, Math.min(255, Math.round(((v - minE) / span) * 255)));
+                        hmImg.data[i * 4] = norm;
+                        hmImg.data[i * 4 + 1] = norm;
+                        hmImg.data[i * 4 + 2] = norm;
+                        hmImg.data[i * 4 + 3] = 255;
+
+                        var cL = elevs[rr * gridN + Math.max(0, cc - 1)];
+                        var cR = elevs[rr * gridN + Math.min(gridN - 1, cc + 1)];
+                        var cU = elevs[Math.max(0, rr - 1) * gridN + cc];
+                        var cD = elevs[Math.min(gridN - 1, rr + 1) * gridN + cc];
+                        var dzx = ((cR - cL) / span) * 14.0;
+                        var dzy = ((cD - cU) / span) * 14.0;
+                        var nx = -dzx, ny = -dzy, nz = 1.0;
+                        var len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1.0;
+                        var dot = Math.max(0.15, Math.min(1.0, ((nx / len) * sunX + (ny / len) * sunY + (nz / len) * sunZ) * 0.85 + 0.35));
+                        var shade = Math.round(dot * 255);
+                        hsImg.data[i * 4] = shade;
+                        hsImg.data[i * 4 + 1] = shade;
+                        hsImg.data[i * 4 + 2] = Math.min(255, shade + 8);
+                        hsImg.data[i * 4 + 3] = 255;
+                    }
+                }
+                hmSCtx.putImageData(hmImg, 0, 0);
+                hsSCtx.putImageData(hsImg, 0, 0);
+
+                var hmHi = document.createElement("canvas");
+                hmHi.width = 1024;
+                hmHi.height = 1024;
+                var hmHCtx = hmHi.getContext("2d");
+                hmHCtx.imageSmoothingEnabled = true;
+                hmHCtx.imageSmoothingQuality = "high";
+                hmHCtx.drawImage(hmSmall, 0, 0, 1024, 1024);
+
+                var hsHi = document.createElement("canvas");
+                hsHi.width = 1024;
+                hsHi.height = 1024;
+                var hsHCtx = hsHi.getContext("2d");
+                hsHCtx.imageSmoothingEnabled = true;
+                hsHCtx.imageSmoothingQuality = "high";
+                hsHCtx.drawImage(hsSmall, 0, 0, 1024, 1024);
+
+                return {
+                    z: z,
+                    centerLat: centerCoord.lat,
+                    centerLon: centerCoord.lon,
+                    gridN: gridN,
+                    elevs: elevs,
+                    minE: minE,
+                    maxE: maxE,
+                    texCanvas: texCanvas,
+                    hmCanvas: hmHi,
+                    hsCanvas: hsHi
+                };
+            });
+        }
+
+        function startWebGLTerrainLoop(pkg) {
+            var canvas = document.getElementById("terrain3DCanvas");
+            if (!canvas) return;
+            var gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+            if (!gl) {
+                var st = document.getElementById("terrain3DStatus");
+                if (st) st.textContent = "WebGL desteklenmiyor; AE'ye 3D Aktar'ı kullanın.";
+                return;
+            }
+
+            if (terrain3DState.rafId) {
+                cancelAnimationFrame(terrain3DState.rafId);
+                terrain3DState.rafId = 0;
+            }
+
+            var vsSrc = [
+                "attribute vec3 aPos;",
+                "attribute vec2 aUv;",
+                "attribute vec3 aNorm;",
+                "uniform mat4 uMvp;",
+                "uniform float uExag;",
+                "varying vec2 vUv;",
+                "varying vec3 vNorm;",
+                "void main() {",
+                "  vec3 p = vec3(aPos.x, aPos.y * uExag, aPos.z);",
+                "  gl_Position = uMvp * vec4(p, 1.0);",
+                "  vUv = aUv;",
+                "  vNorm = normalize(vec3(aNorm.x * uExag, aNorm.y, aNorm.z * uExag));",
+                "}"
+            ].join("\n");
+
+            var fsSrc = [
+                "precision mediump float;",
+                "uniform sampler2D uTex;",
+                "varying vec2 vUv;",
+                "varying vec3 vNorm;",
+                "void main() {",
+                "  vec4 col = texture2D(uTex, vUv);",
+                "  vec3 sun = normalize(vec3(-0.6, 0.75, -0.5));",
+                "  float diff = clamp(dot(normalize(vNorm), sun), 0.0, 1.0);",
+                "  float light = 0.52 + diff * 0.65;",
+                "  gl_FragColor = vec4(col.rgb * light, 1.0);",
+                "}"
+            ].join("\n");
+
+            function compileShader(type, src) {
+                var sh = gl.createShader(type);
+                gl.shaderSource(sh, src);
+                gl.compileShader(sh);
+                return sh;
+            }
+
+            var prog = gl.createProgram();
+            gl.attachShader(prog, compileShader(gl.VERTEX_SHADER, vsSrc));
+            gl.attachShader(prog, compileShader(gl.FRAGMENT_SHADER, fsSrc));
+            gl.linkProgram(prog);
+            gl.useProgram(prog);
+
+            var N = pkg.gridN;
+            var span = Math.max(100, pkg.maxE - pkg.minE);
+            var positions = new Float32Array(N * N * 3);
+            var uvs = new Float32Array(N * N * 2);
+            var normals = new Float32Array(N * N * 3);
+            var indices = [];
+
+            for (var r = 0; r < N; r++) {
+                for (var c = 0; c < N; c++) {
+                    var i = r * N + c;
+                    var u = c / (N - 1);
+                    var v = r / (N - 1);
+                    var h = ((pkg.elevs[i] - pkg.minE) / span) * 0.18;
+                    positions[i * 3] = (u - 0.5) * 2.4;
+                    positions[i * 3 + 1] = h;
+                    positions[i * 3 + 2] = (v - 0.5) * 2.4;
+
+                    uvs[i * 2] = u;
+                    uvs[i * 2 + 1] = v;
+
+                    var hL = ((pkg.elevs[r * N + Math.max(0, c - 1)] - pkg.minE) / span) * 0.18;
+                    var hR = ((pkg.elevs[r * N + Math.min(N - 1, c + 1)] - pkg.minE) / span) * 0.18;
+                    var hU = ((pkg.elevs[Math.max(0, r - 1) * N + c] - pkg.minE) / span) * 0.18;
+                    var hD = ((pkg.elevs[Math.min(N - 1, r + 1) * N + c] - pkg.minE) / span) * 0.18;
+                    var step = 2.4 / (N - 1);
+                    normals[i * 3] = (hL - hR) / (2 * step);
+                    normals[i * 3 + 1] = 1.0;
+                    normals[i * 3 + 2] = (hU - hD) / (2 * step);
+                }
+            }
+
+            for (var rr = 0; rr < N - 1; rr++) {
+                for (var cc = 0; cc < N - 1; cc++) {
+                    var a = rr * N + cc;
+                    var b = a + 1;
+                    var d = (rr + 1) * N + cc;
+                    var e = d + 1;
+                    indices.push(a, d, b, b, d, e);
+                }
+            }
+
+            function bindAttr(name, data, size) {
+                var buf = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+                gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+                var loc = gl.getAttribLocation(prog, name);
+                gl.enableVertexAttribArray(loc);
+                gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0);
+            }
+
+            bindAttr("aPos", positions, 3);
+            bindAttr("aUv", uvs, 2);
+            bindAttr("aNorm", normals, 3);
+
+            var ibo = gl.createBuffer();
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+            var tex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, tex);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, pkg.texCanvas);
+
+            var uMvp = gl.getUniformLocation(prog, "uMvp");
+            var uExag = gl.getUniformLocation(prog, "uExag");
+
+            function mat4Perspective(fov, aspect, near, far) {
+                var f = 1.0 / Math.tan(fov / 2);
+                var nf = 1 / (near - far);
+                return [
+                    f / aspect, 0, 0, 0,
+                    0, f, 0, 0,
+                    0, 0, (far + near) * nf, -1,
+                    0, 0, (2 * far * near) * nf, 0
+                ];
+            }
+
+            function mat4Mul(a, b) {
+                var out = new Float32Array(16);
+                for (var col = 0; col < 4; col++) {
+                    for (var row = 0; row < 4; row++) {
+                        out[col * 4 + row] =
+                            a[0 * 4 + row] * b[col * 4 + 0] +
+                            a[1 * 4 + row] * b[col * 4 + 1] +
+                            a[2 * 4 + row] * b[col * 4 + 2] +
+                            a[3 * 4 + row] * b[col * 4 + 3];
+                    }
+                }
+                return out;
+            }
+
+            function renderFrame() {
+                if (!terrain3DState.active) return;
+                var dpr = window.devicePixelRatio || 1;
+                var w = Math.max(100, Math.round(canvas.clientWidth * dpr));
+                var h = Math.max(100, Math.round(canvas.clientHeight * dpr));
+                if (canvas.width !== w || canvas.height !== h) {
+                    canvas.width = w;
+                    canvas.height = h;
+                }
+                gl.viewport(0, 0, w, h);
+                gl.enable(gl.DEPTH_TEST);
+                gl.clearColor(0.025, 0.04, 0.08, 1.0);
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+                var proj = mat4Perspective(45 * Math.PI / 180, w / h, 0.05, 50.0);
+                var cy = Math.cos(terrain3DState.yaw), sy = Math.sin(terrain3DState.yaw);
+                var cp = Math.cos(terrain3DState.pitch), sp = Math.sin(terrain3DState.pitch);
+                var rotY = [cy, 0, -sy, 0, 0, 1, 0, 0, sy, 0, cy, 0, 0, 0, 0, 1];
+                var rotX = [1, 0, 0, 0, 0, cp, sp, 0, 0, -sp, cp, 0, 0, 0, 0, 1];
+                var trans = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, -0.08, -terrain3DState.dist, 1];
+                var mvp = mat4Mul(proj, mat4Mul(trans, mat4Mul(rotX, rotY)));
+
+                gl.uniformMatrix4fv(uMvp, false, mvp);
+                gl.uniform1f(uExag, terrain3DState.exag);
+                gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+
+                terrain3DState.rafId = requestAnimationFrame(renderFrame);
+            }
+
+            terrain3DState.rafId = requestAnimationFrame(renderFrame);
+        }
+
+        function openInteractive3DMode() {
+            var overlay = document.getElementById("terrain3DModalOverlay");
+            var stLbl = document.getElementById("terrain3DStatus");
+            if (!overlay) return;
+            overlay.classList.remove("hidden");
+            terrain3DState.active = true;
+            if (stLbl) stLbl.textContent = "SRTM 3D Yükleniyor...";
+
+            var c = map.getCenter();
+            var z = map.getZoom();
+            var provKey = document.getElementById("tileProviderSelect").value || "esri_sat";
+            var prov = TILE_PROVIDERS[provKey] || TILE_PROVIDERS.esri_sat;
+
+            buildTerrariumTerrainPackage(c.lat, c.lng, z, prov)
+                .then(function (pkg) {
+                    terrain3DState.lastPackage = pkg;
+                    if (stLbl) {
+                        stLbl.textContent = "Z" + pkg.z + " • " + Math.round(pkg.minE) + "m – " + Math.round(pkg.maxE) + "m";
+                    }
+                    startWebGLTerrainLoop(pkg);
+                })
+                .catch(function (err) {
+                    if (stLbl) stLbl.textContent = "Hata: " + err.message;
+                });
+        }
+
+        function closeInteractive3DMode() {
+            var overlay = document.getElementById("terrain3DModalOverlay");
+            terrain3DState.active = false;
+            if (terrain3DState.rafId) {
+                cancelAnimationFrame(terrain3DState.rafId);
+                terrain3DState.rafId = 0;
+            }
+            if (overlay) overlay.classList.add("hidden");
+        }
+
+        var canvas3D = document.getElementById("terrain3DCanvas");
+        if (canvas3D) {
+            var drag3D = false, last3DX = 0, last3DY = 0;
+            canvas3D.addEventListener("mousedown", function (ev) {
+                drag3D = true;
+                last3DX = ev.clientX;
+                last3DY = ev.clientY;
+            });
+            window.addEventListener("mousemove", function (ev) {
+                if (!drag3D || !terrain3DState.active) return;
+                terrain3DState.yaw += (ev.clientX - last3DX) * 0.008;
+                terrain3DState.pitch = Math.max(0.18, Math.min(1.45, terrain3DState.pitch + (ev.clientY - last3DY) * 0.008));
+                last3DX = ev.clientX;
+                last3DY = ev.clientY;
+            });
+            window.addEventListener("mouseup", function () { drag3D = false; });
+            canvas3D.addEventListener("wheel", function (ev) {
+                ev.preventDefault();
+                terrain3DState.dist = Math.max(1.0, Math.min(5.0, terrain3DState.dist + ev.deltaY * 0.002));
+            }, { passive: false });
+        }
+
+        var btnEnter3DTop = document.getElementById("btnToggle3DMode");
+        if (btnEnter3DTop) btnEnter3DTop.addEventListener("click", openInteractive3DMode);
+        var btnEnter3DTab = document.getElementById("btnTabEnter3DMode");
+        if (btnEnter3DTab) btnEnter3DTab.addEventListener("click", openInteractive3DMode);
+        var btnExit3D = document.getElementById("btnExit3DMode");
+        if (btnExit3D) btnExit3D.addEventListener("click", closeInteractive3DMode);
+
+        var inpExag3D = document.getElementById("inp3DExagSlider");
+        if (inpExag3D) {
+            inpExag3D.addEventListener("input", function () {
+                var val = parseFloat(this.value) || 2.5;
+                terrain3DState.exag = val;
+                var lbl = document.getElementById("lbl3DExagVal");
+                if (lbl) lbl.textContent = val.toFixed(1) + "x";
+            });
+        }
+
+        function exportTerrainPackageToAE(pkg, exagVal) {
+            if (typeof window.require !== "function") {
+                setStatus("3D DEM oluşturuldu (Min: " + Math.round(pkg.minE) + "m, Max: " + Math.round(pkg.maxE) + "m).");
+                return;
+            }
+            var fs = window.require("fs");
+            var path = window.require("path");
+            var os = window.require("os");
+            var dir = path.join(os.tmpdir(), "GeoMotion_Heightmaps");
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            var ts = Date.now();
+            var hmPath = path.join(dir, "Heightmap_DEM_" + ts + ".png");
+            var hsPath = path.join(dir, "Hillshade_3D_" + ts + ".png");
+            fs.writeFileSync(hmPath, Buffer.from(pkg.hmCanvas.toDataURL("image/png").replace(/^data:image\/png;base64,/, ""), "base64"));
+            fs.writeFileSync(hsPath, Buffer.from(pkg.hsCanvas.toDataURL("image/png").replace(/^data:image\/png;base64,/, ""), "base64"));
+
+            var payload = getMapcompSettings();
+            payload.filePath = hmPath;
+            payload.hillshadePath = hsPath;
+            payload.tileZoom = pkg.z;
+            payload.centerLat = pkg.centerLat;
+            payload.centerLon = pkg.centerLon;
+            payload.exaggeration = exagVal || 2.5;
+            callHost("importHeightmapAnd3DRig", payload);
+        }
+
+        var btnSend3DAE = document.getElementById("btnSend3DToAE");
+        if (btnSend3DAE) {
+            btnSend3DAE.addEventListener("click", function () {
+                if (terrain3DState.lastPackage) {
+                    exportTerrainPackageToAE(terrain3DState.lastPackage, terrain3DState.exag);
+                    closeInteractive3DMode();
+                }
+            });
+        }
+
+        // 3D Landscape Heightmap & Hillshade Rig (Tab 5 button)
         var btnHeightmapRig = document.getElementById("btnExportHeightmapRig");
         if (btnHeightmapRig) {
             btnHeightmapRig.addEventListener("click", function () {
-                var bounds = map.getBounds();
-                var gridCount = 9;
-                var lats = [], lons = [];
-                var s = bounds.getSouth(), n = bounds.getNorth(), w = bounds.getWest(), e = bounds.getEast();
-                for (var r = 0; r < gridCount; r++) {
-                    for (var c = 0; c < gridCount; c++) {
-                        lats.push((n - (r / (gridCount - 1)) * (n - s)).toFixed(4));
-                        lons.push((w + (c / (gridCount - 1)) * (e - w)).toFixed(4));
-                    }
-                }
-                setStatus("🗻 Open-Meteo DEM üzerinden Heightmap (Yükseklik Haritası) oluşturuluyor...");
-                fetch("https://api.open-meteo.com/v1/elevation?latitude=" + lats.join(",") + "&longitude=" + lons.join(","))
-                    .then(function (res) { return res.json(); })
-                    .then(function (data) {
-                        var elevs = data.elevation || [];
-                        var minE = 99999, maxE = -99999;
-                        elevs.forEach(function (v) {
-                            if (v < minE) minE = v;
-                            if (v > maxE) maxE = v;
-                        });
-                        if (maxE <= minE) maxE = minE + 500;
-
-                        // Render smooth 1024x1024 Grayscale Heightmap Canvas
-                        var smallCv = document.createElement("canvas");
-                        smallCv.width = gridCount;
-                        smallCv.height = gridCount;
-                        var sCtx = smallCv.getContext("2d");
-                        var imgData = sCtx.createImageData(gridCount, gridCount);
-                        for (var i = 0; i < gridCount * gridCount; i++) {
-                            var val = elevs[i] || 0;
-                            var norm = Math.max(0, Math.min(255, Math.round(((val - minE) / (maxE - minE)) * 255)));
-                            imgData.data[i * 4] = norm;
-                            imgData.data[i * 4 + 1] = norm;
-                            imgData.data[i * 4 + 2] = norm;
-                            imgData.data[i * 4 + 3] = 255;
-                        }
-                        sCtx.putImageData(imgData, 0, 0);
-
-                        var hiCv = document.createElement("canvas");
-                        hiCv.width = 1024;
-                        hiCv.height = 1024;
-                        var hCtx = hiCv.getContext("2d");
-                        hCtx.imageSmoothingEnabled = true;
-                        hCtx.imageSmoothingQuality = "high";
-                        hCtx.drawImage(smallCv, 0, 0, 1024, 1024);
-
-                        if (typeof window.require === "function") {
-                            var fs = window.require("fs");
-                            var path = window.require("path");
-                            var os = window.require("os");
-                            var dir = path.join(os.tmpdir(), "GeoMotion_Heightmaps");
-                            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-                            var fpath = path.join(dir, "Heightmap_DEM_" + Date.now() + ".png");
-                            var b64 = hiCv.toDataURL("image/png").replace(/^data:image\/png;base64,/, "");
-                            fs.writeFileSync(fpath, Buffer.from(b64, "base64"));
-
-                            var payload = getMapcompSettings();
-                            payload.filePath = fpath;
-                            payload.visibleHeightmap = true;
-                            callHost("importHeightmapAnd3DRig", payload);
-                        } else {
-                            setStatus("Heightmap oluşturuldu (Min: " + minE + "m, Max: " + maxE + "m).");
-                        }
+                var c = map.getCenter();
+                var z = map.getZoom();
+                var provKey = document.getElementById("tileProviderSelect").value || "esri_sat";
+                var prov = TILE_PROVIDERS[provKey] || TILE_PROVIDERS.esri_sat;
+                var exag = parseFloat(document.getElementById("terrainExaggeration").value) || 2.5;
+                setStatus("🗻 SRTM Terrarium DEM üzerinden 3D Hillshade + Heightmap + Displacement oluşturuluyor...");
+                buildTerrariumTerrainPackage(c.lat, c.lng, z, prov)
+                    .then(function (pkg) {
+                        exportTerrainPackageToAE(pkg, exag);
                     })
                     .catch(function (err) {
                         setStatus("Heightmap DEM hatası: " + err.message, true);

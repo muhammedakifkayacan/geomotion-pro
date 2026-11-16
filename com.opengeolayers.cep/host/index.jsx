@@ -2380,35 +2380,95 @@ var GeoMotionHost = (function () {
         },
 
         importHeightmapAnd3DRig: function (payloadJson) {
-            app.beginUndoGroup("GeoMotion: 3D Heightmap & Displacement Rig");
+            app.beginUndoGroup("GeoMotion: 3D Relief, Hillshade & Displacement Rig");
             try {
                 var data = JSON.parse(payloadJson || "{}");
                 var comp = getOrCreateActiveGeoComp(data);
                 var rig = ensureMapcompRig(comp, data);
 
+                // Clean previous heightmap / hillshade / relief layers
+                for (var idx = comp.numLayers; idx >= 1; idx--) {
+                    var nm = comp.layer(idx).name;
+                    if (nm === "MAP_HEIGHTMAP_DISPLACEMENT" || nm === "MAP_3D_HILLSHADE" || nm === "MAP_3D_RELIEF_DISPLACEMENT") {
+                        comp.layer(idx).remove();
+                    }
+                }
+
+                var tileZoom = parseFloat(data.tileZoom || rig.refZoom || 6);
+                var cLat = (data.centerLat !== undefined) ? parseFloat(data.centerLat) : rig.refLat;
+                var cLon = (data.centerLon !== undefined) ? parseFloat(data.centerLon) : rig.refLon;
+                var xy = latLonToCompXY(cLat, cLon, rig.refLat, rig.refLon, rig.refZoom, comp.width, comp.height);
+                var atlasScale = Math.pow(2, rig.refZoom - tileZoom) * 100.0;
+                var exag = parseFloat(data.exaggeration || 2.5);
+
+                var hmLayer = null;
                 if (data.filePath) {
                     var f = new File(data.filePath);
                     if (f.exists) {
                         var io = new ImportOptions(f);
                         var footage = app.project.importFile(io);
-                        var hmLayer = comp.layers.add(footage);
+                        hmLayer = comp.layers.add(footage);
                         hmLayer.name = "MAP_HEIGHTMAP_DISPLACEMENT";
-                        hmLayer.comment = "16-Bit Grayscale Elevation Heightmap (Compatible with FreeForm Pro, Mir, Helium & Displacement Map)";
+                        hmLayer.comment = "Grayscale Elevation Heightmap (SRTM DEM)";
                         hmLayer.label = 14;
+                        // Scale 1024px heightmap to cover the 768px (3x3) geographic span
+                        var hmScale = atlasScale * (768.0 / 1024.0);
                         attachCoplanarToAnchor(
                             hmLayer,
                             rig.anchor,
-                            [comp.width / 2, comp.height / 2, -0.5],
-                            [100, 100, 100]
+                            [xy[0], xy[1], -0.2],
+                            [hmScale, hmScale, 100]
                         );
-                        hmLayer.property("Transform").property("Opacity").setValue(data.visibleHeightmap ? 65 : 0);
+                        hmLayer.property("Transform").property("Opacity").setValue(0);
+                        hmLayer.enabled = false;
                     }
+                }
+
+                // Import 3D Sun-Lit Hillshade Relief Layer (immediate sculpted 3D mountain shading!)
+                if (data.hillshadePath) {
+                    var hf = new File(data.hillshadePath);
+                    if (hf.exists) {
+                        var hio = new ImportOptions(hf);
+                        var hFootage = app.project.importFile(hio);
+                        var hsLayer = comp.layers.add(hFootage);
+                        hsLayer.name = "MAP_3D_HILLSHADE";
+                        hsLayer.comment = "3D Shaded Terrain Relief (SRTM DEM Sun-Lit Hillshade)";
+                        hsLayer.label = 9;
+                        var hsScale = atlasScale * (768.0 / 1024.0);
+                        attachCoplanarToAnchor(
+                            hsLayer,
+                            rig.anchor,
+                            [xy[0], xy[1], -0.4],
+                            [hsScale, hsScale, 100]
+                        );
+                        try { hsLayer.blendingMode = BlendingMode.OVERLAY; } catch (eBm) {}
+                        hsLayer.property("Transform").property("Opacity").setValue(Math.min(88, Math.round(38 + exag * 10)));
+                    }
+                }
+
+                // Apply native AE Displacement Map directly above tiles so mountains shift with 3D parallax!
+                if (hmLayer) {
+                    var dispLayer = comp.layers.addSolid([1, 1, 1], "MAP_3D_RELIEF_DISPLACEMENT", comp.width, comp.height, 1.0);
+                    dispLayer.adjustmentLayer = true;
+                    dispLayer.label = 11;
+                    dispLayer.comment = "Native 3D Terrain Displacement driven by MAP_HEIGHTMAP_DISPLACEMENT";
+                    try {
+                        var dispFx = dispLayer.property("ADBE Effect Parade").addProperty("ADBE Displacement Map");
+                        if (dispFx) {
+                            // 1 = Layer index of MAP_HEIGHTMAP_DISPLACEMENT
+                            try { dispFx.property("ADBE Displacement Map-0001").setValue(hmLayer.index); } catch (eP1) {}
+                            try { dispFx.property("ADBE Displacement Map-0002").setValue(5); } catch (eP2) {} // Luminance
+                            try { dispFx.property("ADBE Displacement Map-0003").setValue(Math.round(8 * exag)); } catch (eP3) {}
+                            try { dispFx.property("ADBE Displacement Map-0004").setValue(5); } catch (eP4) {} // Luminance
+                            try { dispFx.property("ADBE Displacement Map-0005").setValue(Math.round(14 * exag)); } catch (eP5) {}
+                        }
+                    } catch (eDisp) {}
                 }
 
                 app.endUndoGroup();
                 return JSON.stringify({
                     ok: true,
-                    message: "Gri Tonlamalı Yükseklik Haritası (MAP_HEIGHTMAP_DISPLACEMENT) 3B Arazi Eklentileri (FreeForm Pro, Mir, Helium) için sahneye eklendi!"
+                    message: "🏔️ 3D Kabartma (Hillshade + Displacement Map + Heightmap) After Effects sahnesine uygulandı!"
                 });
             } catch (err) {
                 app.endUndoGroup();
