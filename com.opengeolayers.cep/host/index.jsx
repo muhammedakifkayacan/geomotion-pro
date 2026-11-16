@@ -1460,28 +1460,43 @@ var GeoMotionHost = (function () {
 
                 var pinLayer = comp.layers.addShape();
                 pinLayer.name = "PIN_" + (data.title || "Place");
-                pinLayer.comment = "3D Billboard Location Pin";
+                pinLayer.comment = "2D Screen-Space Pin locked to 3D Map Coordinates via toComp()";
                 pinLayer.label = 14;
-                attachCoplanarToAnchor(pinLayer, rig.anchor, [xy[0], xy[1], -8], [100, 100, 100]);
+                pinLayer.threeDLayer = false;
+                pinLayer.parent = null;
 
-                if (data.autoCounterScale !== false) {
+                addOrGetSlider(pinLayer, "Feature Latitude", parseFloat(data.lat));
+                addOrGetSlider(pinLayer, "Feature Longitude", parseFloat(data.lon));
+
+                pinLayer.property("Transform").property("Position").expression = [
+                    "function getCtrl(){ try { return thisComp.layer('MAP_CAMERA_CONTROLLER'); } catch(e){ return thisComp.layer('GEO_MAPCOMP_CONTROL'); } }",
+                    "function getAnchor(){ try { return thisComp.layer('MAP_WORLD_ANCHOR'); } catch(e){ return thisComp.layer('GEO_WORLD_ANCHOR'); } }",
+                    "var ctrl = getCtrl();",
+                    "var anchor = getAnchor();",
+                    "var refLat = ctrl.effect('Reference Lat')('Slider');",
+                    "var refLon = ctrl.effect('Reference Lon')('Slider');",
+                    "var refZ = ctrl.effect('Reference Zoom')('Slider');",
+                    "var myLat = effect('Feature Latitude')('Slider');",
+                    "var myLon = effect('Feature Longitude')('Slider');",
+                    "var scale = 256 * Math.pow(2, refZ);",
+                    "function px(lo){ return (lo + 180.0) / 360.0 * scale; }",
+                    "function py(la){ var s = Math.sin(la * Math.PI / 180.0); s = Math.min(Math.max(s, -0.9999), 0.9999); return (0.5 - Math.log((1+s)/(1-s)) / (4 * Math.PI)) * scale; }",
+                    "var localPt = [(thisComp.width / 2) + (px(myLon) - px(refLon)), (thisComp.height / 2) + (py(myLat) - py(refLat)), 0];",
+                    "var p = anchor.toComp(localPt);",
+                    "[p[0], p[1]];"
+                ].join("\n");
+
+                if (data.autoCounterScale === false) {
                     pinLayer.property("Transform").property("Scale").expression = [
-                        "function getAnchor(){ try { return thisComp.layer('MAP_WORLD_ANCHOR'); } catch(e){ return thisComp.layer('GEO_WORLD_ANCHOR'); } }",
-                        "var s = getAnchor().transform.scale[0];",
-                        "var inv = 10000 / Math.max(0.001, s);",
-                        "[inv, inv, inv];"
-                    ].join("\n");
-                }
-
-                if (data.counterRotate !== false) {
-                    pinLayer.property("Transform").property("Z Rotation").expression = [
                         "function getCtrl(){ try { return thisComp.layer('MAP_CAMERA_CONTROLLER'); } catch(e){ return thisComp.layer('GEO_MAPCOMP_CONTROL'); } }",
-                        "-getCtrl().effect('Mapcomp Bearing')('Slider');"
+                        "var ctrl = getCtrl();",
+                        "var z = Math.max(2.8, ctrl.effect('Mapcomp Zoom')('Slider'));",
+                        "var refZ = ctrl.effect('Reference Zoom')('Slider');",
+                        "var s = 100 * Math.pow(2, z - refZ);",
+                        "[s, s];"
                     ].join("\n");
-                    pinLayer.property("Transform").property("X Rotation").expression = [
-                        "function getCtrl(){ try { return thisComp.layer('MAP_CAMERA_CONTROLLER'); } catch(e){ return thisComp.layer('GEO_MAPCOMP_CONTROL'); } }",
-                        "-getCtrl().effect('Mapcomp Pitch')('Slider');"
-                    ].join("\n");
+                } else {
+                    pinLayer.property("Transform").property("Scale").setValue([100, 100]);
                 }
 
                 var contents = pinLayer.property("Contents");
@@ -1619,7 +1634,11 @@ var GeoMotionHost = (function () {
                     textProp.setValue(textDoc);
 
                     var textYOffset = (style === "location") ? -56 : -32;
-                    attachCoplanarToAnchor(textLayer, pinLayer, [0, textYOffset, -2], [100, 100, 100]);
+                    textLayer.threeDLayer = false;
+                    textLayer.parent = pinLayer;
+                    textLayer.property("Transform").property("Position").setValue([0, textYOffset]);
+                    textLayer.property("Transform").property("Scale").setValue([100, 100]);
+                    textLayer.property("Transform").property("Rotation").setValue(0);
                 }
 
                 app.endUndoGroup();
