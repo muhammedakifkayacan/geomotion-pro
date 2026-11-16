@@ -1335,15 +1335,73 @@
             var parts = ((resEl && resEl.value) ? resEl.value : "1920x1080").split("x");
             updateMapcompGuideBox(parseInt(parts[0], 10) || 1920, parseInt(parts[1], 10) || 1080);
         }
+        var lastSyncedAEStateKey = "";
+        window.__suppressNextMoveEndSync = false;
+        window.__lastUserMapInteractTs = 0;
+
+        function syncPreviewFromAE(force) {
+            if (!map) return;
+            if (!force && !liveLinkEnabled) return;
+            if (!force && (Date.now() - window.__lastUserMapInteractTs < 1200)) return;
+            var curName = (document.getElementById("compNameInput") && document.getElementById("compNameInput").value) || "Mapcomp 1";
+            callHost("getCurrentMapcompViewState", { compName: curName }, function (res) {
+                if (!res || !res.ok) return;
+                var stateKey = [
+                    res.compName,
+                    res.width, res.height,
+                    Number(res.lat).toFixed(5),
+                    Number(res.lon).toFixed(5),
+                    Number(res.zoom).toFixed(3),
+                    Number(res.pitch).toFixed(1),
+                    Number(res.bearing).toFixed(1)
+                ].join("|");
+                if (!force && stateKey === lastSyncedAEStateKey) return;
+                lastSyncedAEStateKey = stateKey;
+
+                if (res.width && res.height) {
+                    window.__activeCompWidth = parseInt(res.width, 10);
+                    window.__activeCompHeight = parseInt(res.height, 10);
+                    updateMapcompGuideBox(window.__activeCompWidth, window.__activeCompHeight);
+                }
+
+                var inpPitch = document.getElementById("inpViewPitch");
+                if (inpPitch) inpPitch.value = Math.round(res.pitch || 0);
+                var inpBearing = document.getElementById("inpViewBearing");
+                if (inpBearing) inpBearing.value = Math.round(res.bearing || 0);
+                var badge = document.getElementById("lblTiltBadge");
+                if (badge) badge.textContent = Math.round(res.pitch || 0) + "\u00b0 Tilt";
+                updateMapPerspectivePreview();
+
+                var offset = getPreviewToCompZoomOffset();
+                var targetPreviewZoom = Math.max(2.0, Math.min(19.0, (parseFloat(res.zoom) || 6) - offset));
+                window.__suppressNextMoveEndSync = true;
+                map.setView([res.lat, res.lon], targetPreviewZoom, { animate: false });
+            });
+        }
+        window.syncPreviewFromAE = syncPreviewFromAE;
+
         setTimeout(function () {
             syncGuideToPreset();
             if (typeof refreshActiveCompDetails === "function") {
                 refreshActiveCompDetails();
             }
-        }, 200);
+            syncPreviewFromAE(true);
+        }, 220);
+        setInterval(function () { syncPreviewFromAE(false); }, 450);
         window.addEventListener("resize", syncGuideToPreset);
 
+        map.on("movestart zoomstart", function () {
+            if (!window.__suppressNextMoveEndSync) {
+                window.__lastUserMapInteractTs = Date.now();
+            }
+        });
+
         map.on("moveend", function () {
+            if (window.__suppressNextMoveEndSync) {
+                window.__suppressNextMoveEndSync = false;
+                return;
+            }
+            window.__lastUserMapInteractTs = Date.now();
             if (!liveLinkEnabled) return;
             var settings = getMapcompSettings();
             settings.setKeyframe = false;
@@ -2775,7 +2833,10 @@
         document.getElementById("btnToggleLiveLink").addEventListener("click", function () {
             liveLinkEnabled = !liveLinkEnabled;
             this.classList.toggle("active", liveLinkEnabled);
-            setStatus(liveLinkEnabled ? "Mapcomp Live Link: Aktif" : "Mapcomp Live Link: Duraklatıldı");
+            setStatus(liveLinkEnabled ? "Mapcomp Live Link: Aktif (AE ↔ Panel Çift Yönlü Senkron)" : "Mapcomp Live Link: Duraklatıldı");
+            if (liveLinkEnabled && typeof window.syncPreviewFromAE === "function") {
+                window.syncPreviewFromAE(true);
+            }
         });
 
         function triggerAddViewKeyframe() {
