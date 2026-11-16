@@ -1999,25 +1999,18 @@
     function findCleanCountry(query, db) {
         if (!query || !db) return null;
         var s = (query + "").toLowerCase().trim();
+        // Never hijack provinces, cities, districts, or "City (Country)" queries as a country!
+        if (/\[(province|city|capital|district|state|point)\]/i.test(s) || /\([^)]+\)/.test(s.replace(/\(temiz kara s[ıi]n[ıi]r[ıi]\)/gi, "")) || s.indexOf(",") !== -1) {
+            return null;
+        }
+        var cleanS = s.replace(/\(temiz kara s[ıi]n[ıi]r[ıi]\)/gi, "").trim();
         var trMap = { 'ı': 'i', 'İ': 'i', 'ç': 'c', 'ğ': 'g', 'ö': 'o', 'ş': 's', 'ü': 'u' };
-        var norm = s;
+        var norm = cleanS;
         for (var k in trMap) {
             norm = norm.split(k).join(trMap[k]);
         }
         if (db[norm]) return db[norm];
-        if (db[s]) return db[s];
-
-        var words = norm.replace(/[,.;:!?_]/g, " ").split(/\s+/);
-        for (var i = 0; i < words.length; i++) {
-            var w = words[i];
-            if (w.length >= 3 && db[w]) return db[w];
-        }
-
-        for (var key in db) {
-            if (key.length >= 4 && (key === norm || norm.indexOf(key) !== -1 || key.indexOf(norm) !== -1)) {
-                return db[key];
-            }
-        }
+        if (db[cleanS]) return db[cleanS];
         return null;
     }
 
@@ -2248,7 +2241,8 @@
     function drawFeatureInAE(feat, customColorOverride) {
         if (!feat) return;
         if (!feat.polygons || feat.polygons.length === 0) {
-            downloadAndAddFeature(feat.query || feat.name, true);
+            var qClean = (feat.query || feat.name || "").replace(/\[.*?\]/g, "").replace(/\(([^)]+)\)/g, ", $1").trim();
+            downloadAndAddFeature(qClean, true);
             return;
         }
         var payload = getMapcompSettings();
