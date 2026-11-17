@@ -15,3 +15,6 @@ ehthumbs.db
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Compiled binary installers (published via GitHub Releases)
+dist/
