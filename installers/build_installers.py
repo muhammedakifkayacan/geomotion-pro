@@ -17,7 +17,7 @@ import struct
 import zipfile
 import subprocess
 
-ROOT_DIR = "/Users/akifm1pro/Desktop/OpenGeoLayers"
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIST_DIR = os.path.join(ROOT_DIR, "dist")
 CEP_SRC = os.path.join(ROOT_DIR, "com.opengeolayers.cep")
 SCRIPTUI_SRC = os.path.join(ROOT_DIR, "ScriptUI", "GeoMotion_Pro_Panel.jsx")
