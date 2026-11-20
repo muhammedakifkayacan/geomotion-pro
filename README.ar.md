@@ -4,7 +4,7 @@
 
 **إضافة مجانية ومفتوحة المصدر بنسبة 100% مدعومة بالذكاء الاصطناعي لإنشاء الخرائط والرسوم المتحركة الجغرافية في برنامج Adobe After Effects.**
 
-🌐 **Language / Dil / اللغة:** [🇺🇸 English](README.md) | [🇹🇷 Türkçe](README.tr.md) | **🇸🇦 العربية**
+🌐 **Language / Dil / اللغة:** [🇺🇸 English](README.md) | [🇹🇷 Türkçe](README.tr.md) | **🇸🇦 العربية** | [📚 User & API Guide](docs/GUIDE.md)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/muhammedakifkayacan/geomotion-pro)](https://github.com/muhammedakifkayacan/geomotion-pro/releases/latest)
