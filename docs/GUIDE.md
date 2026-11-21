@@ -2,7 +2,7 @@
 
 # GeoMotion Pro — User Guide & API Setup 📚
 
-🌐 **Language / Dil:** **🇺🇸 English** | [🇹🇷 Türkçe](GUIDE.tr.md) | [⬅️ Back to README](../README.md)
+🌐 **Language / Dil / اللغة:** **🇺🇸 English** | [🇹🇷 Türkçe](GUIDE.tr.md) | [🇸🇦 العربية](GUIDE.ar.md) | [⬅️ Back to README](../README.md)
 
 </div>
 
