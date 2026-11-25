@@ -2961,3 +2961,218 @@ body.gl-ui-scale-130 .gl-toolbar-btn {
     pointer-events: none;
     white-space: nowrap;
 }
+
+/* Feature Collection Row Delete & 3D Data Bars Editor */
+.gl-mini-del {
+    background: rgba(244, 63, 94, 0.12);
+    color: #fda4af;
+    border: 1px solid rgba(244, 63, 94, 0.35);
+    border-radius: 3px;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    line-height: 1.2;
+    transition: all 0.14s ease;
+}
+.gl-mini-del:hover {
+    background: #f43f5e;
+    color: #fff;
+    border-color: #fb7185;
+}
+.gl-data-textarea {
+    width: 100%;
+    background: #0f172a;
+    color: #e2e8f0;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: "SF Mono", Consolas, Menlo, monospace;
+    font-size: 10.5px;
+    line-height: 1.45;
+    resize: vertical;
+    outline: none;
+}
+.gl-data-textarea:focus {
+    border-color: #38bdf8;
+}
+
+/* =========================================================================
+   v3.0.2: MINI KEYFRAME TIMELINE SCRUBBER, QUICK RECIPES & UNDO/CLEAR TOOLS
+   ========================================================================= */
+.gl-undo-btn,
+.gl-clear-scene-btn {
+    padding: 0 7px !important;
+    width: auto !important;
+    font-size: 10.5px;
+    font-weight: 600;
+    gap: 3px;
+}
+.gl-undo-btn:hover {
+    border-color: #38bdf8;
+    color: #e0f2fe;
+}
+.gl-clear-scene-btn:hover {
+    border-color: rgba(244, 63, 94, 0.65);
+    background: rgba(244, 63, 94, 0.16);
+    color: #fecdd3;
+}
+
+.gl-mini-timeline-strip {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 10px;
+    background: #0d121d;
+    border-bottom: 1px solid var(--ae-border);
+    flex-shrink: 0;
+    user-select: none;
+}
+.gl-tl-label {
+    font-size: 9.5px;
+    font-weight: 800;
+    color: #f59e0b;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+}
+.gl-tl-time {
+    font-family: "SF Mono", Consolas, Menlo, monospace;
+    font-size: 10px;
+    color: #cbd5e1;
+    min-width: 68px;
+    white-space: nowrap;
+}
+.gl-tl-track {
+    position: relative;
+    flex: 1;
+    height: 14px;
+    background: #172033;
+    border: 1px solid #293548;
+    border-radius: 7px;
+    cursor: pointer;
+    overflow: visible;
+}
+.gl-tl-track:hover {
+    border-color: #38bdf8;
+}
+.gl-tl-progress {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    background: linear-gradient(90deg, rgba(56, 189, 248, 0.22), rgba(56, 189, 248, 0.42));
+    border-radius: 7px 0 0 7px;
+    pointer-events: none;
+}
+.gl-tl-playhead {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 2px;
+    background: #38bdf8;
+    box-shadow: 0 0 6px #38bdf8;
+    transform: translateX(-1px);
+    pointer-events: none;
+    z-index: 3;
+}
+.gl-tl-diamonds {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+.gl-tl-diamond {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    color: #fbbf24;
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+    pointer-events: auto;
+    z-index: 4;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+    transition: transform 0.12s ease, color 0.12s ease;
+}
+.gl-tl-diamond:hover {
+    transform: translate(-50%, -50%) scale(1.35);
+    color: #fef08a;
+}
+.gl-tl-diamond.active-cti {
+    color: #38bdf8;
+    text-shadow: 0 0 6px #38bdf8;
+}
+.gl-tl-count {
+    font-size: 9.5px;
+    font-weight: 700;
+    color: #94a3b8;
+    white-space: nowrap;
+}
+.gl-tl-clear-btn {
+    background: rgba(245, 158, 11, 0.1);
+    color: #fcd34d;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 9.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.14s ease;
+}
+.gl-tl-clear-btn:hover {
+    background: #ef4444;
+    border-color: #f87171;
+    color: #fff;
+}
+
+.gl-quick-recipes-strip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    background: #101624;
+    border-bottom: 1px solid var(--ae-border);
+    overflow-x: auto;
+    flex-shrink: 0;
+}
+.gl-quick-recipes-strip::-webkit-scrollbar {
+    height: 0;
+}
+.gl-qr-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #94a3b8;
+    white-space: nowrap;
+    margin-right: 2px;
+}
+.gl-recipe-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #192234;
+    color: #e2e8f0;
+    border: 1px solid #2d3b55;
+    border-radius: 12px;
+    padding: 2.5px 9px;
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.14s ease;
+}
+.gl-recipe-chip:hover {
+    background: #23304a;
+    border-color: #38bdf8;
+    color: #fff;
+}
+.gl-recipe-chip.active {
+    background: rgba(56, 189, 248, 0.18);
+    border-color: #38bdf8;
+    color: #fff;
+}
+.qr-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}

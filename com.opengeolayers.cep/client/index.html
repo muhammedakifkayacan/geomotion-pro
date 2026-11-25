@@ -107,6 +107,12 @@
                 <button id="btnToggleLanguage" class="gl-icon-btn gl-lang-btn" title="Panel Dilini Değiştir / Switch UI Language (TR / EN)">
                     <span id="lblCurrentLang">TR</span>
                 </button>
+                <button id="btnQuickUndo" class="gl-icon-btn gl-undo-btn" title="Son İşlemi Geri Al (After Effects Undo)">
+                    <span>↶ Geri Al</span>
+                </button>
+                <button id="btnClearSceneOverlays" class="gl-icon-btn gl-clear-scene-btn" title="Sahnedeki Pin, Sınır, Rota ve Efekt Çizimlerini Temizle (Harita Karoları Korunur)">
+                    <span>🧹 Temizle</span>
+                </button>
                 <button id="btnToggle3DMode" class="gl-toolbar-btn gl-keyframe-btn" title="Tam Ekran İnteraktif 3D Kabartma Harita Moduna Geç">
                     <span>🏔️ 3D Mod</span>
                 </button>
@@ -307,6 +313,40 @@
     </section>
 
     <!-- ===================================================================
+         3B. IN-PANEL MINI KEYFRAME TIMELINE SCRUBBER
+         =================================================================== -->
+    <section id="miniTimelineStrip" class="gl-mini-timeline-strip">
+        <span class="gl-tl-label" title="Kamera Keyframe Zaman Çizelgesi">◆ TL</span>
+        <span id="lblMiniTimelineReadout" class="gl-tl-time">0.0s / 15.0s</span>
+        <div id="miniTimelineTrack" class="gl-tl-track" title="Tıkla/Sürükle: AE Zamanına Git • Elmasa Tıkla: Keyframe'e Atla • Elmasa Sağ Tıkla: Keyframe Sil">
+            <div id="miniTimelineProgress" class="gl-tl-progress" style="width: 0%;"></div>
+            <div id="miniTimelinePlayhead" class="gl-tl-playhead" style="left: 0%;"></div>
+            <div id="miniTimelineDiamonds" class="gl-tl-diamonds"></div>
+        </div>
+        <span id="lblKeyframeCountBadge" class="gl-tl-count" title="Toplam Kamera Keyframe Sayısı">0 ◆</span>
+        <button id="btnClearAllKeyframes" class="gl-tl-clear-btn" title="Tüm Kamera Keyframe'lerini Sil">◆✕</button>
+    </section>
+
+    <!-- ===================================================================
+         3C. ONE-CLICK VISUAL STYLE RECIPES (SEKMELER ARASI GEZMEDEN ŞABLONLAR)
+         =================================================================== -->
+    <section class="gl-quick-recipes-strip">
+        <span class="gl-qr-label">🎨 Şablon:</span>
+        <button class="gl-recipe-chip" data-recipe="vox_doc" title="Vox Belgesel Stili: Koyu Editoryal Altlık + Siyan Vurgu + Beyaz Kontur + Gölge">
+            <span class="qr-dot" style="background:#38bdf8;"></span>Vox Belgesel
+        </button>
+        <button class="gl-recipe-chip" data-recipe="neon_glow" title="Neon Gece Stili: Siber Karanlık Harita + Parlayan Neon Glow Sınır &amp; Rotalar">
+            <span class="qr-dot" style="background:#22d3ee; box-shadow:0 0 6px #22d3ee;"></span>Neon Glow
+        </button>
+        <button class="gl-recipe-chip" data-recipe="vintage_paper" title="Eski Kağıt / Arşiv Stili: Sıcak Sepya Harita Dokusu + Kesikli Altın/Kahve Sınırlar">
+            <span class="qr-dot" style="background:#d97706;"></span>Eski Kağıt
+        </button>
+        <button class="gl-recipe-chip" data-recipe="breaking_news" title="Son Dakika Haber Stili: Uydu Altlığı + Kırmızı Jeopolitik Vurgu + Ufuk Sisi &amp; Gölge">
+            <span class="qr-dot" style="background:#ef4444;"></span>Son Dakika
+        </button>
+    </section>
+
+    <!-- ===================================================================
          4. GEOLAYERS 3 WORKSPACE NAVIGATION TABS
          =================================================================== -->
     <nav class="gl-tabs-nav">
@@ -374,7 +414,10 @@
             <div class="gl-collection-box">
                 <div class="gl-collection-header">
                     <span>Feature Collection (<strong id="featureCountBadge">3</strong>)</span>
-                    <span id="selectedFeatureProps" class="gl-hint">Select a feature to inspect or draw</span>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span id="selectedFeatureProps" class="gl-hint">Select a feature to inspect or draw</span>
+                        <button id="btnClearFeatureCollection" class="gl-mini-action" title="Listeyi Temizle (Varsayılanlara Sıfırla)">Temizle</button>
+                    </div>
                 </div>
                 <div id="featureCollectionList" class="gl-feature-list"></div>
             </div>
@@ -555,7 +598,7 @@
                         <select id="pinStyleSelect">
                             <option value="location" selected>Classic Map Pin (Location Drop)</option>
                             <option value="callout">Vox Pill Callout Box</option>
-                            <option value="radar" selected>Radar Pulse Marker</option>
+                            <option value="radar">Radar Pulse Marker</option>
                             <option value="capital">Capital Star Badge</option>
                             <option value="minimal">Minimal Map Label</option>
                             <option value="hud">Sci-Fi HUD Target</option>
@@ -873,11 +916,14 @@
                     <button id="btnExportHeightmapRig" class="gl-btn-secondary" title="Generate Grayscale Heightmap PNG &amp; Import for FreeForm Pro / Mir / Helium / Displacement">🗻 Export Heightmap Rig</button>
                     <button id="btnCreateDataChart" class="gl-btn-primary-wide">Draw 3D Data Bars</button>
                 </div>
-                <textarea id="dataChartTextarea" class="hidden" rows="2">İstanbul, 41.0082, 28.9784, 15840900, #38bdf8
+                <div class="gl-field" style="margin-top:8px;">
+                    <label>3D Veri Çubukları Verisi (Ad, Enlem, Boylam, Değer, #Renk — CSV ile de yüklenebilir):</label>
+                    <textarea id="dataChartTextarea" class="gl-data-textarea" rows="4">İstanbul, 41.0082, 28.9784, 15840900, #38bdf8
 Ankara, 39.9255, 32.8663, 5782285, #818cf8
 İzmir, 38.4237, 27.1428, 4462056, #34d399
 Bursa, 40.1885, 29.0610, 3194720, #fbbf24
 Antalya, 36.8969, 30.7133, 2688004, #f43f5e</textarea>
+                </div>
             </div>
 
             <!-- CUSTOM TMS / WMS SERVER PROFILES & CACHE DIRECTORY MANAGER -->
@@ -973,8 +1019,8 @@ Antalya, 36.8969, 30.7133, 2688004, #f43f5e</textarea>
 
     <!-- Footer Status Bar -->
     <footer class="gl-status-footer">
-        <span id="toastStatusMsg">Mapcomp 1 Hazır — Haritayı kaydırın/yakınlaştırın ve [◆ Keyframe] veya [Finalize] butonuna tıklayın.</span>
-        <span class="gl-footer-right">v4.5 PRO</span>
+        <span id="toastStatusMsg">Hazır — Haritayı kaydırın/yakınlaştırın ve [◆ Keyframe] veya [Finalize] butonuna tıklayın.</span>
+        <span class="gl-footer-right" id="lblFooterVer">v3.0.2</span>
     </footer>
 
     <!-- ===================================================================
@@ -1294,7 +1340,7 @@ Antalya, 36.8969, 30.7133, 2688004, #f43f5e</textarea>
                         <div>
                             <h4>GeoMotion Pro</h4>
                             <p class="gl-about-tagline">Adobe After Effects için Açık Kaynak Harita &amp; Hareketli Grafik Motoru</p>
-                            <span class="gl-about-ver-badge">Yüklü Sürüm: <strong id="lblInstalledVer">v3.0.0</strong></span>
+                            <span class="gl-about-ver-badge">Yüklü Sürüm: <strong id="lblInstalledVer">v3.0.2</strong></span>
                         </div>
                     </div>
 
@@ -1334,13 +1380,6 @@ Antalya, 36.8969, 30.7133, 2688004, #f43f5e</textarea>
             </div>
         </div>
     </div>
-            </div>
-        </div>
-    </div>
-
-    <script src="./lib/CSInterface.js"></script>
-    <script src="./lib/leaflet.js"></script>
-    <script src="./js/app.js"></script>
 
     <!-- ===================================================================
          CREATE MAPCOMP MODAL (IMAGE 2 AUTHENTIC GEOLAYERS 3 DIALOG)
@@ -1390,6 +1429,14 @@ Antalya, 36.8969, 30.7133, 2688004, #f43f5e</textarea>
                         <option value="1080x1080">1080 px x 1080 px (1:1 Kare Post)</option>
                         <option value="custom">Özel Boyut...</option>
                     </select>
+                </div>
+                <div id="cmCustomSizeRow" class="gl-create-form-row hidden">
+                    <span class="gl-cf-label">Custom px</span>
+                    <div style="display:flex; align-items:center; gap:6px; flex:1;">
+                        <input type="number" id="cmCustomWidth" class="gl-cf-input" value="1920" min="320" max="8192" step="10" style="width:80px;" title="Genişlik (px)" />
+                        <span style="color:#94a3b8; font-size:11px;">×</span>
+                        <input type="number" id="cmCustomHeight" class="gl-cf-input" value="1080" min="320" max="8192" step="10" style="width:80px;" title="Yükseklik (px)" />
+                    </div>
                 </div>
                 <div class="gl-create-form-row">
                     <span class="gl-cf-label">Framerate</span>
@@ -1455,5 +1502,8 @@ Antalya, 36.8969, 30.7133, 2688004, #f43f5e</textarea>
         </div>
     </div>
 
+    <script src="./lib/CSInterface.js"></script>
+    <script src="./lib/leaflet.js"></script>
+    <script src="./js/app.js"></script>
     </body>
 </html>

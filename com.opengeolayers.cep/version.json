@@ -1,10 +1,10 @@
 {
-  "version": "3.0.1",
+  "version": "3.0.2",
   "name": "GeoMotion Pro",
-  "releaseDate": "2026-11-16",
+  "releaseDate": "2026-11-25",
   "minAEVersion": "13.0",
   "githubRepo": "muhammedakifkayacan/geomotion-pro",
-  "changelog": "• After Effects açılışında otomatik kompozisyon (Mapcomp 1) oluşturma sorunu giderildi.\n• Pin & Etiketler için 2D toComp() ekran uzayı sistemi eklendi (3B harita tarafından kesilme sorunu çözüldü; eski pinler Finalize ile otomatik güncellenir).\n• Çift yönlü AE Timeline ↔ Önizleme senkronizasyonu eklendi.\n• Kıyı il ve ülkeler için 'Denizi Dahil Et' seçeneği ve temiz kara sınırı (ADM1) desteği eklendi.\n• Full-Panel İnteraktif 3D Kabartma Modu + Çoklu-Zoom Hillshade piramidi eklendi.\n• Kılavuz çerçeve ile AE kompozisyon zoom/kadraj eşleşmesi 1:1 kalibre edildi.",
+  "changelog": "• Panel İçi Mini Keyframe Zaman Çizelgesi (Timeline Scrubber) eklendi: AE timeline'a inmeden ◆ keyframe noktalarını görme, tıklayıp o saniyeye gitme ve sağ tıkla keyframe silme.\n• Tek Tık Görsel Stil Şablonları eklendi (Vox Belgesel, Neon Glow, Eski Kağıt / Arşiv, Son Dakika Haber).\n• Üst araç çubuğuna Hızlı Geri Al (↶ Undo) ve Sahne Çizimlerini Temizle (🧹 Temizle) butonları eklendi.\n• Uçuş rotası (Flight) 36 noktalı pürüzsüz eğri ve ok takibi, GeoCopilot kadraj/pin eşleşmesi, Time-Series sıralama, Feature Collection tekil silme (✕) ve haritaya sürükle-bırak GeoJSON/GPX/CSV desteği iyileştirildi.",
   "downloads": {
     "mac": "https://github.com/{repo}/releases/latest/download/GeoMotion_Pro_v3.0_macOS_Installer.dmg",
     "win": "https://github.com/{repo}/releases/latest/download/GeoMotion_Pro_v3.0_Windows_Setup.exe",

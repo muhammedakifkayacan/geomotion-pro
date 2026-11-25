@@ -757,6 +757,7 @@
             motionBlur: isMotionBlur,
             shutterAngle: sAngle,
             shutterPhase: sPhase,
+            placerMode: (document.getElementById("placerModeSelect") && document.getElementById("placerModeSelect").value) || "01_place_top",
             mapLabelLang: activeMapLabelLang || "tr",
             is3D: true
         };
@@ -826,6 +827,11 @@
         var needle = document.getElementById("compassNeedle");
         if (needle) {
             needle.style.transform = "rotate(" + bearing + "deg)";
+        }
+        var bBadge = document.getElementById("lblBearingBadge");
+        if (bBadge) {
+            var bRound = Math.round(bearing);
+            bBadge.textContent = (bRound === 0) ? "0\u00b0 N" : (bRound + "\u00b0");
         }
     }
 
@@ -1338,6 +1344,67 @@
         var lastSyncedAEStateKey = "";
         window.__suppressNextMoveEndSync = false;
         window.__lastUserMapInteractTs = 0;
+        window.__activeCompDuration = 15.0;
+        window.__activeCompKeyframes = [];
+
+        function renderMiniTimeline(curTime, duration, keyframes) {
+            var dur = Math.max(1.0, parseFloat(duration) || window.__activeCompDuration || 15.0);
+            var t = Math.max(0, Math.min(dur, parseFloat(curTime) || 0));
+            window.__activeCompDuration = dur;
+            if (Array.isArray(keyframes)) {
+                window.__activeCompKeyframes = keyframes;
+            }
+            var kfs = window.__activeCompKeyframes || [];
+
+            var lblTime = document.getElementById("lblMiniTimelineReadout");
+            if (lblTime) lblTime.textContent = t.toFixed(1) + "s / " + dur.toFixed(1) + "s";
+
+            var pct = Math.max(0, Math.min(100, (t / dur) * 100));
+            var prog = document.getElementById("miniTimelineProgress");
+            if (prog) prog.style.width = pct.toFixed(2) + "%";
+            var head = document.getElementById("miniTimelinePlayhead");
+            if (head) head.style.left = pct.toFixed(2) + "%";
+
+            var countLbl = document.getElementById("lblKeyframeCountBadge");
+            if (countLbl) countLbl.textContent = kfs.length + " \u25c6";
+
+            var dWrap = document.getElementById("miniTimelineDiamonds");
+            if (dWrap) {
+                var kfSignature = kfs.join(",") + "|" + dur.toFixed(2) + "|" + Math.round(t * 10);
+                if (dWrap.getAttribute("data-sig") !== kfSignature) {
+                    dWrap.setAttribute("data-sig", kfSignature);
+                    dWrap.innerHTML = "";
+                    kfs.forEach(function (kt) {
+                        var dPct = Math.max(1.5, Math.min(98.5, (kt / dur) * 100));
+                        var span = document.createElement("span");
+                        span.className = "gl-tl-diamond" + (Math.abs(kt - t) < 0.08 ? " active-cti" : "");
+                        span.style.left = dPct.toFixed(2) + "%";
+                        span.textContent = "\u25c6";
+                        span.title = "Keyframe: " + kt.toFixed(2) + "s (Sol Tık: Git • Sağ Tık: Sil)";
+                        span.addEventListener("mousedown", function (ev) { ev.stopPropagation(); });
+                        span.addEventListener("click", function (ev) {
+                            ev.stopPropagation();
+                            var cName = (document.getElementById("compNameInput") && document.getElementById("compNameInput").value) || "Mapcomp 1";
+                            callHost("setMapcompTime", { compName: cName, time: kt }, function () {
+                                syncPreviewFromAE(true);
+                                setStatus("\u25c6 " + kt.toFixed(2) + "s keyframe konumuna gidildi.");
+                            });
+                        });
+                        span.addEventListener("contextmenu", function (ev) {
+                            ev.preventDefault();
+                            ev.stopPropagation();
+                            var cName = (document.getElementById("compNameInput") && document.getElementById("compNameInput").value) || "Mapcomp 1";
+                            callHost("deleteMapcompKeyframe", { compName: cName, time: kt }, function (res) {
+                                syncPreviewFromAE(true);
+                                if (res && res.message) setStatus(res.message);
+                            });
+                        });
+                        dWrap.appendChild(span);
+                    });
+                }
+            }
+        }
+        window.renderMiniTimeline = renderMiniTimeline;
 
         function syncPreviewFromAE(force) {
             if (!map) return;
@@ -1346,9 +1413,12 @@
             var curName = (document.getElementById("compNameInput") && document.getElementById("compNameInput").value) || "Mapcomp 1";
             callHost("getCurrentMapcompViewState", { compName: curName }, function (res) {
                 if (!res || !res.ok) return;
+                renderMiniTimeline(res.time, res.duration, res.keyframes);
                 var stateKey = [
                     res.compName,
                     res.width, res.height,
+                    Number(res.time || 0).toFixed(2),
+                    (res.keyframes || []).join(","),
                     Number(res.lat).toFixed(5),
                     Number(res.lon).toFixed(5),
                     Number(res.zoom).toFixed(3),
@@ -1984,6 +2054,25 @@
             actions.appendChild(btnDraw);
             actions.appendChild(btnLbl);
 
+            var btnDel = document.createElement("button");
+            btnDel.className = "gl-mini-del";
+            btnDel.textContent = "✕";
+            btnDel.title = "Bu öğeyi listeden kaldır";
+            btnDel.addEventListener("click", function (ev) {
+                ev.stopPropagation();
+                featureCollection = featureCollection.filter(function (f) { return f.id !== feat.id; });
+                if (selectedFeatureId === feat.id) {
+                    if (previewGeoJSONLayer && map) {
+                        try { map.removeLayer(previewGeoJSONLayer); } catch (e) {}
+                        previewGeoJSONLayer = null;
+                    }
+                    selectedFeatureId = featureCollection.length ? featureCollection[0].id : null;
+                }
+                renderFeatureCollectionList();
+                setStatus("'" + feat.name + "' listeden kaldırıldı.");
+            });
+            actions.appendChild(btnDel);
+
             row.appendChild(meta);
             row.appendChild(actions);
 
@@ -2193,6 +2282,13 @@
             .catch(function () { return null; });
     }
 
+    function pushUniqueFeature(newFeat) {
+        featureCollection = featureCollection.filter(function (f) {
+            return !(f.name === newFeat.name && f.type === newFeat.type);
+        });
+        featureCollection.unshift(newFeat);
+    }
+
     function downloadAndAddFeature(queryName, autoDrawInAE) {
         var includeSeaEl = document.getElementById("chkIncludeSeaBoundary");
         var includeSea = includeSeaEl ? includeSeaEl.checked : false;
@@ -2210,7 +2306,7 @@
                         polygons: cleanCountry.paths,
                         closed: true
                     };
-                    featureCollection.unshift(cleanFeat);
+                    pushUniqueFeature(cleanFeat);
                     selectFeature(cleanFeat.id, true);
                     setStatus(cleanCountry.name + " temiz kara sınırı eklendi (" + cleanCountry.paths.length + " yol, 0 deniz hatası).");
                     if (autoDrawInAE) {
@@ -2250,7 +2346,7 @@
                     polygons: extracted.paths,
                     closed: extracted.closed
                 };
-                featureCollection.unshift(newFeat);
+                pushUniqueFeature(newFeat);
                 selectFeature(newFeat.id, true);
                 setStatus("Feature '" + newFeat.name + "' eklendi (" + extracted.paths.length + " vektör yolu).");
 
@@ -2476,7 +2572,7 @@
     // =========================================================================
     // GEOUPDATER: AUTOMATIC & ON-DEMAND GITHUB UPDATE ENGINE
     // =========================================================================
-    var CURRENT_VERSION = "3.0.1";
+    var CURRENT_VERSION = "3.0.2";
     var GeoUpdater = {
         currentVersion: CURRENT_VERSION,
         defaultRepo: "muhammedakifkayacan/geomotion-pro",
@@ -2758,6 +2854,12 @@
         var placerModeSelect = document.getElementById("placerModeSelect");
         if (placerModeSelect) {
             placerModeSelect.addEventListener("change", function () {
+                var v = this.value;
+                var pinSel = document.getElementById("pinStyleSelect");
+                if (v === "06_callout" && pinSel) pinSel.value = "callout";
+                else if (v === "05_poi" && pinSel) pinSel.value = "location";
+                else if (v === "03_locator") callHost("createLocatorInsetMap", getMapcompSettings());
+                else if (v === "11_compass") callHost("createScaleBarAndCompass", getMapcompSettings());
                 setStatus("Placer Modu: " + this.options[this.selectedIndex].text);
             });
         }
@@ -2863,6 +2965,40 @@
             });
         }
 
+        var cmSearchInp = document.getElementById("createMapcompSearch");
+        if (cmSearchInp) {
+            function runCreateModalSearch() {
+                var q = cmSearchInp.value.trim();
+                if (!q) return;
+                searchNominatim(q, false).then(function (list) {
+                    if (list && list.length && createModalMap) {
+                        var lat = parseFloat(list[0].lat);
+                        var lon = parseFloat(list[0].lon);
+                        if (!isNaN(lat) && !isNaN(lon)) {
+                            createModalMap.flyTo([lat, lon], 7.5, { duration: 0.9 });
+                        }
+                    }
+                });
+            }
+            cmSearchInp.addEventListener("keydown", function (ev) {
+                if (ev.key === "Enter") {
+                    ev.preventDefault();
+                    runCreateModalSearch();
+                }
+            });
+            cmSearchInp.addEventListener("change", runCreateModalSearch);
+        }
+
+        var cmPresetSizeSel = document.getElementById("cmSelectPresetSize");
+        if (cmPresetSizeSel) {
+            cmPresetSizeSel.addEventListener("change", function () {
+                var customRow = document.getElementById("cmCustomSizeRow");
+                if (customRow) {
+                    customRow.classList.toggle("hidden", this.value !== "custom");
+                }
+            });
+        }
+
         var btnSubmitCreate = document.getElementById("btnSubmitCreateMapcomp");
         if (btnSubmitCreate) {
             btnSubmitCreate.addEventListener("click", function () {
@@ -2871,9 +3007,15 @@
                 var fps = parseFloat(document.getElementById("cmSelectFps").value) || 25;
                 var duration = parseFloat(document.getElementById("cmSelectDuration").value) || 15;
 
-                var dims = sizeVal.split("x");
-                var w = parseInt(dims[0], 10) || 1080;
-                var h = parseInt(dims[1], 10) || 1920;
+                var w = 1080, h = 1920;
+                if (sizeVal === "custom") {
+                    w = Math.max(320, Math.min(8192, parseInt((document.getElementById("cmCustomWidth") && document.getElementById("cmCustomWidth").value) || "1920", 10) || 1920));
+                    h = Math.max(320, Math.min(8192, parseInt((document.getElementById("cmCustomHeight") && document.getElementById("cmCustomHeight").value) || "1080", 10) || 1080));
+                } else {
+                    var dims = sizeVal.split("x");
+                    w = parseInt(dims[0], 10) || 1080;
+                    h = parseInt(dims[1], 10) || 1920;
+                }
 
                 var center = createModalMap ? createModalMap.getCenter() : (map ? map.getCenter() : { lat: 39.9255, lng: 32.8663 });
                 var previewZoom = createModalMap ? createModalMap.getZoom() : (map ? map.getZoom() : 6);
@@ -2927,11 +3069,211 @@
         function triggerAddViewKeyframe() {
             var settings = getMapcompSettings();
             settings.setKeyframe = true;
-            callHost("setMapcompViewKeyframe", settings);
+            callHost("setMapcompViewKeyframe", settings, function () {
+                if (typeof window.syncPreviewFromAE === "function") {
+                    window.syncPreviewFromAE(true);
+                }
+            });
         }
 
         document.getElementById("btnSetViewKeyframe").addEventListener("click", triggerAddViewKeyframe);
         document.getElementById("btnMapToolKeyframe").addEventListener("click", triggerAddViewKeyframe);
+
+        // =====================================================================
+        // v3.0.2: MINI KEYFRAME TIMELINE SCRUBBER, QUICK RECIPES & UNDO/CLEAR
+        // =====================================================================
+        var tlTrack = document.getElementById("miniTimelineTrack");
+        if (tlTrack) {
+            var isScrubbingTL = false;
+            function scrubToClientX(clientX) {
+                var rect = tlTrack.getBoundingClientRect();
+                if (!rect || rect.width <= 0) return;
+                var ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+                var dur = window.__activeCompDuration || 15.0;
+                var targetT = Number((ratio * dur).toFixed(2));
+                if (typeof window.renderMiniTimeline === "function") {
+                    window.renderMiniTimeline(targetT, dur, window.__activeCompKeyframes);
+                }
+                var cName = (document.getElementById("compNameInput") && document.getElementById("compNameInput").value) || "Mapcomp 1";
+                callHost("setMapcompTime", { compName: cName, time: targetT }, function (res) {
+                    if (res && res.ok && typeof window.syncPreviewFromAE === "function") {
+                        window.syncPreviewFromAE(true);
+                    }
+                });
+            }
+            tlTrack.addEventListener("mousedown", function (ev) {
+                if (ev.button !== 0) return;
+                isScrubbingTL = true;
+                scrubToClientX(ev.clientX);
+            });
+            window.addEventListener("mousemove", function (ev) {
+                if (!isScrubbingTL) return;
+                scrubToClientX(ev.clientX);
+            });
+            window.addEventListener("mouseup", function () {
+                isScrubbingTL = false;
+            });
+        }
+
+        var btnClearKfs = document.getElementById("btnClearAllKeyframes");
+        if (btnClearKfs) {
+            btnClearKfs.addEventListener("click", function () {
+                var cName = (document.getElementById("compNameInput") && document.getElementById("compNameInput").value) || "Mapcomp 1";
+                callHost("deleteMapcompKeyframe", { compName: cName, clearAll: true }, function (res) {
+                    if (typeof window.syncPreviewFromAE === "function") window.syncPreviewFromAE(true);
+                    if (res && res.message) setStatus(res.message);
+                });
+            });
+        }
+
+        var btnUndo = document.getElementById("btnQuickUndo");
+        if (btnUndo) {
+            btnUndo.addEventListener("click", function () {
+                callHost("undoLastGeoAction", {}, function (res) {
+                    if (typeof window.syncPreviewFromAE === "function") window.syncPreviewFromAE(true);
+                    if (res && res.message) setStatus(res.message);
+                });
+            });
+        }
+
+        var btnClearScene = document.getElementById("btnClearSceneOverlays");
+        if (btnClearScene) {
+            btnClearScene.addEventListener("click", function () {
+                if (previewGeoJSONLayer && map) {
+                    try { map.removeLayer(previewGeoJSONLayer); } catch (e) {}
+                    previewGeoJSONLayer = null;
+                }
+                if (previewRouteLayer && map) {
+                    try { map.removeLayer(previewRouteLayer); } catch (e) {}
+                    previewRouteLayer = null;
+                }
+                var cName = (document.getElementById("compNameInput") && document.getElementById("compNameInput").value) || "Mapcomp 1";
+                callHost("clearMapcompOverlays", { compName: cName }, function (res) {
+                    if (res && res.message) setStatus(res.message);
+                });
+            });
+        }
+
+        var QUICK_RECIPES = {
+            vox_doc: {
+                recipeLabel: "Vox Belgesel Stili",
+                tileProvider: "carto_dark",
+                fillColor: "#38bdf8",
+                strokeColor: "#f8fafc",
+                strokeWidth: 4,
+                fillOpacity: 35,
+                dashed: false,
+                pinStyle: "callout",
+                pinColor: "#38bdf8",
+                routeColor: "#38bdf8",
+                useColorizer: true,
+                waterColor: "#0b1324",
+                landColor: "#1e293b",
+                highlightColor: "#7dd3fc",
+                blendAmount: 35,
+                enableGlow: false,
+                enableShadow: true,
+                enableFog: false
+            },
+            neon_glow: {
+                recipeLabel: "Neon Gece (Glow)",
+                tileProvider: "carto_dark",
+                fillColor: "#06b6d4",
+                strokeColor: "#22d3ee",
+                strokeWidth: 5,
+                fillOpacity: 22,
+                dashed: false,
+                pinStyle: "hud",
+                pinColor: "#22d3ee",
+                routeColor: "#22d3ee",
+                useColorizer: true,
+                waterColor: "#040711",
+                landColor: "#0f172a",
+                highlightColor: "#22d3ee",
+                blendAmount: 25,
+                enableGlow: true,
+                enableShadow: false,
+                enableFog: true
+            },
+            vintage_paper: {
+                recipeLabel: "Eski Kağıt / Arşiv",
+                tileProvider: "carto_light",
+                fillColor: "#d97706",
+                strokeColor: "#78350f",
+                strokeWidth: 4,
+                fillOpacity: 20,
+                dashed: true,
+                pinStyle: "minimal",
+                pinColor: "#92400e",
+                routeColor: "#b45309",
+                useColorizer: true,
+                waterColor: "#cbb692",
+                landColor: "#dfd0b8",
+                highlightColor: "#fdf6e3",
+                blendAmount: 18,
+                enableGlow: false,
+                enableShadow: true,
+                enableFog: false
+            },
+            breaking_news: {
+                recipeLabel: "Son Dakika Haber",
+                tileProvider: "esri_sat",
+                fillColor: "#ef4444",
+                strokeColor: "#fecdd3",
+                strokeWidth: 5,
+                fillOpacity: 40,
+                dashed: false,
+                pinStyle: "radar",
+                pinColor: "#ef4444",
+                routeColor: "#ef4444",
+                useColorizer: true,
+                waterColor: "#070b14",
+                landColor: "#1c2434",
+                highlightColor: "#f43f5e",
+                blendAmount: 42,
+                enableGlow: false,
+                enableShadow: true,
+                enableFog: true
+            }
+        };
+
+        var recipeChips = document.querySelectorAll(".gl-recipe-chip");
+        for (var rc = 0; rc < recipeChips.length; rc++) {
+            recipeChips[rc].addEventListener("click", function () {
+                var rKey = this.getAttribute("data-recipe");
+                var r = QUICK_RECIPES[rKey];
+                if (!r) return;
+                for (var k = 0; k < recipeChips.length; k++) recipeChips[k].classList.remove("active");
+                this.classList.add("active");
+
+                // 1. Switch Map Preview Tile Provider
+                applySelectedMapStyle(r.tileProvider);
+
+                // 2. Sync Shape, Pin, Route & Colorizer UI Inputs
+                document.getElementById("borderFillColor").value = r.fillColor;
+                document.getElementById("borderStrokeColor").value = r.strokeColor;
+                document.getElementById("borderStrokeWidth").value = String(r.strokeWidth);
+                document.getElementById("borderFillOpacity").value = String(r.fillOpacity);
+                document.getElementById("borderDashedStroke").checked = r.dashed;
+                document.getElementById("pinStyleSelect").value = r.pinStyle;
+                document.getElementById("pinColorInput").value = r.pinColor;
+                document.getElementById("routeStrokeColor").value = r.routeColor;
+                document.getElementById("themeWaterColor").value = r.waterColor;
+                document.getElementById("themeLandColor").value = r.landColor;
+                document.getElementById("themeHighlightColor").value = r.highlightColor;
+
+                if (selectedFeatureId) selectFeature(selectedFeatureId, false);
+
+                // 3. Apply Recipe in After Effects if a Mapcomp is active
+                var payload = getMapcompSettings();
+                for (var prop in r) {
+                    if (Object.prototype.hasOwnProperty.call(r, prop)) {
+                        payload[prop] = r[prop];
+                    }
+                }
+                callHost("applyQuickVisualRecipe", payload);
+            });
+        }
 
         document.getElementById("btnFinalizeMapcomp").addEventListener("click", function () {
             finalizeMapcompTiles();
@@ -3411,6 +3753,18 @@
             });
         }
 
+        var btnClearColl = document.getElementById("btnClearFeatureCollection");
+        if (btnClearColl) {
+            btnClearColl.addEventListener("click", function () {
+                if (previewGeoJSONLayer && map) {
+                    try { map.removeLayer(previewGeoJSONLayer); } catch (e) {}
+                    previewGeoJSONLayer = null;
+                }
+                seedInitialFeatureCollection();
+                setStatus("Feature Collection listesi temizlendi ve varsayılanlara sıfırlandı.");
+            });
+        }
+
         document.getElementById("btnDrawSelectedFeature").addEventListener("click", function () {
             var feat = featureCollection.find(function (f) { return f.id === selectedFeatureId; });
             if (feat) drawFeatureInAE(feat);
@@ -3492,6 +3846,33 @@
                             }
                             return [pA, pB];
                         });
+                    }
+                    // Compute Haversine distance for Flight / Straight info badge
+                    var dLat = (pB[1] - pA[1]) * Math.PI / 180;
+                    var dLon = (pB[0] - pA[0]) * Math.PI / 180;
+                    var aHarv = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                        Math.cos(pA[1] * Math.PI / 180) * Math.cos(pB[1] * Math.PI / 180) *
+                        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                    var kmDist = 6371 * 2 * Math.atan2(Math.sqrt(aHarv), Math.sqrt(1 - aHarv));
+                    var infoEl = document.getElementById("routeDistanceInfo");
+                    if (infoEl) {
+                        infoEl.textContent = (mode === "flight" ? "✈️ Uçuş Rotası: " : "📏 Kuş Uçuşu: ") + kmDist.toFixed(1) + " km";
+                        infoEl.classList.remove("hidden");
+                    }
+                    if (mode === "flight") {
+                        var arcPts = [];
+                        var spanLon = pB[0] - pA[0];
+                        var spanLat = pB[1] - pA[1];
+                        var degDist = Math.sqrt(spanLon * spanLon + spanLat * spanLat);
+                        var liftLat = Math.min(18.0, degDist * 0.22);
+                        var steps = 36;
+                        for (var si = 0; si <= steps; si++) {
+                            var t = si / steps;
+                            var lonPt = pA[0] + spanLon * t;
+                            var latPt = pA[1] + spanLat * t + Math.sin(Math.PI * t) * liftLat;
+                            arcPts.push([lonPt, latPt]);
+                        }
+                        return arcPts;
                     }
                     return [pA, pB];
                 })
@@ -4532,13 +4913,15 @@
                 var w = parseInt(document.getElementById("cmDupWidth").value, 10) || 1080;
                 var h = parseInt(document.getElementById("cmDupHeight").value, 10) || 1920;
                 var cleanAtlas = document.getElementById("chkCmCleanAtlas").checked;
+                var openAfterDup = document.getElementById("chkCmOpenAfterDup") ? document.getElementById("chkCmOpenAfterDup").checked : true;
 
                 callHost("duplicateMapcomp", {
                     compName: curName,
                     targetName: targetName,
                     width: w,
                     height: h,
-                    cleanAtlas: cleanAtlas
+                    cleanAtlas: cleanAtlas,
+                    openAfterDup: openAfterDup
                 }, function (res) {
                     if (res && res.ok) {
                         setStatus(res.message);
@@ -4549,9 +4932,14 @@
                             opt.value = res.compName;
                             opt.textContent = res.compName;
                             sel.appendChild(opt);
-                            sel.value = res.compName;
+                            if (openAfterDup) sel.value = res.compName;
                         }
-                        document.getElementById("compNameInput").value = res.compName;
+                        if (openAfterDup) {
+                            document.getElementById("compNameInput").value = res.compName;
+                            window.__activeCompWidth = w;
+                            window.__activeCompHeight = h;
+                            updateMapcompGuideBox(w, h);
+                        }
                         closeCompSettingsModal();
                     } else {
                         setStatus((res && res.error) ? res.error : "Kompozisyon çoğaltılamadı.", true);
@@ -4984,6 +5372,7 @@
         var isTimestampedBrief = /(?:(\d+)\s*[-–—]\s*(\d+)\.?\s*(?:saniye|sn|sec)?\s*:|sahne\s*\d+\s*:)/i.test(prompt);
 
         if (isHormuzNewsBrief || isTimestampedBrief) {
+            var copilotZOff = getPreviewToCompZoomOffset();
             addStepLog("✦", "<strong>Haber Senaryosu Çözümlendi:</strong> Hürmüz Boğazı & Jeopolitik Gerilim Sahne Akışı İcra Ediliyor...", "pending");
 
             // SCENE 1 (0–2s): Orta Doğu Geniş Kadraj & Basra Körfezi Başlangıcı
@@ -5003,7 +5392,7 @@
                     centerLon: 51.5,
                     lat: 27.5,
                     lon: 51.5,
-                    zoom: 4.8,
+                    zoom: Math.min(18.5, 4.8 + copilotZOff),
                     pitch: 25,
                     bearing: 0,
                     time: 0.0
@@ -5026,7 +5415,7 @@
                     centerLon: 53.0,
                     lat: 28.5,
                     lon: 53.0,
-                    zoom: 5.6,
+                    zoom: Math.min(18.5, 5.6 + copilotZOff),
                     pitch: 30,
                     bearing: 5,
                     time: 2.2
@@ -5069,12 +5458,12 @@
                     compName: curName,
                     title: "ABD 5. Filo (Bahreyn)",
                     subtitle: "Naval Support Activity • Basra Körfezi",
-                    template: "radar",
-                    accentColor: "#38bdf8",
+                    style: "radar",
+                    color: "#38bdf8",
                     fontSize: 28,
                     lat: 26.2285,
                     lon: 50.5860,
-                    counterScale: true,
+                    autoCounterScale: true,
                     counterRotate: true
                 }, resolve);
             });
@@ -5094,7 +5483,7 @@
                     centerLon: 56.2500,
                     lat: 26.5667,
                     lon: 56.2500,
-                    zoom: 7.8,
+                    zoom: Math.min(18.5, 7.8 + copilotZOff),
                     pitch: 40,
                     bearing: -10,
                     time: 4.8
@@ -5107,12 +5496,12 @@
                     compName: curName,
                     title: "Hürmüz Boğazı",
                     subtitle: "Stratejik Petrol Geçiş Koridoru",
-                    template: "callout",
-                    accentColor: "#ef4444",
+                    style: "callout",
+                    color: "#ef4444",
                     fontSize: 32,
                     lat: 26.5667,
                     lon: 56.2500,
-                    counterScale: true,
+                    autoCounterScale: true,
                     counterRotate: true
                 }, resolve);
             });
@@ -5123,12 +5512,12 @@
                     compName: curName,
                     title: "Katar (Doha)",
                     subtitle: "Diplomatik Temas Noktası",
-                    template: "callout",
-                    accentColor: "#f59e0b",
+                    style: "callout",
+                    color: "#f59e0b",
                     fontSize: 26,
                     lat: 25.2861,
                     lon: 51.5297,
-                    counterScale: true,
+                    autoCounterScale: true,
                     counterRotate: true
                 }, resolve);
             });
@@ -5169,7 +5558,7 @@
                     centerLon: 53.5,
                     lat: 27.0,
                     lon: 53.5,
-                    zoom: 5.4,
+                    zoom: Math.min(18.5, 5.4 + copilotZOff),
                     pitch: 35,
                     bearing: 0,
                     time: 8.5
@@ -5259,6 +5648,7 @@
                     targetZoom = Math.max(targetZoom, 10.5);
                 }
 
+                var zOff = getPreviewToCompZoomOffset();
                 if (isFromSpace && timelineTime === 0.0) {
                     // DUAL KEYFRAME: High-Orbit Continental Establishing Shot (Z: 3.2) -> Cinematic Descent into Target (Z: 5.8 - 11.0)
                     var spaceStartZoom = 3.2;
@@ -5277,7 +5667,7 @@
                             centerLon: targetPlace.lon,
                             lat: targetPlace.lat,
                             lon: targetPlace.lon,
-                            zoom: spaceStartZoom,
+                            zoom: Math.min(18.5, spaceStartZoom + zOff),
                             pitch: 20,
                             bearing: 0,
                             time: 0.0
@@ -5301,7 +5691,7 @@
                             centerLon: targetPlace.lon,
                             lat: targetPlace.lat,
                             lon: targetPlace.lon,
-                            zoom: targetZoom,
+                            zoom: Math.min(18.5, targetZoom + zOff),
                             pitch: 35,
                             bearing: 0,
                             time: 3.5
@@ -5327,7 +5717,7 @@
                             centerLon: targetPlace.lon,
                             lat: targetPlace.lat,
                             lon: targetPlace.lon,
-                            zoom: startWideZoom,
+                            zoom: Math.min(18.5, startWideZoom + zOff),
                             pitch: 15,
                             bearing: 0,
                             time: 0.0
@@ -5350,7 +5740,7 @@
                             centerLon: targetPlace.lon,
                             lat: targetPlace.lat,
                             lon: targetPlace.lon,
-                            zoom: targetZoom,
+                            zoom: Math.min(18.5, targetZoom + zOff),
                             pitch: 35,
                             bearing: 0,
                             time: 3.0
@@ -5383,7 +5773,7 @@
                             centerLon: targetPlace.lon,
                             lat: targetPlace.lat,
                             lon: targetPlace.lon,
-                            zoom: zoomLevel,
+                            zoom: Math.min(18.5, zoomLevel + zOff),
                             pitch: (isZoomIn ? 35 : 20),
                             bearing: 0,
                             time: timelineTime
@@ -5468,20 +5858,21 @@
                 var lPlace = currentTarget;
                 var stepL = addStepLog("⏳", lPlace.name + " 3D billboard etiketi ekleniyor...");
                 await new Promise(function (resolve) {
+                    var pinStyleWanted = (clLower.indexOf("klasik") !== -1 || clLower.indexOf("classic") !== -1) ? "location" : "radar";
                     callHost("addGeoPinLabel", {
                         compName: curName,
                         title: lPlace.name,
                         subtitle: lPlace.lat.toFixed(2) + "° N, " + lPlace.lon.toFixed(2) + "° E",
-                        template: "radar",
-                        accentColor: "#38bdf8",
+                        style: pinStyleWanted,
+                        color: pinStyleWanted === "location" ? "#ef4444" : "#38bdf8",
                         fontSize: 32,
                         lat: lPlace.lat,
                         lon: lPlace.lon,
-                        counterScale: true,
+                        autoCounterScale: true,
                         counterRotate: true
                     }, function () {
                         stepL.className = "gl-chat-step success";
-                        stepL.innerHTML = '<span class="step-icon">✓</span> ' + lPlace.name + ' dinamik 3D pin etiketi sahneye eklendi!';
+                        stepL.innerHTML = '<span class="step-icon">✓</span> ' + lPlace.name + ' dinamik pin etiketi sahneye eklendi!';
                         resolve();
                     });
                 });
@@ -5505,6 +5896,12 @@
     }
 
     document.addEventListener("DOMContentLoaded", function () {
+        var verStr = "v" + (GeoUpdater.currentVersion || "3.0.1");
+        var verAbout = document.getElementById("lblInstalledVer");
+        if (verAbout) verAbout.textContent = verStr;
+        var verFoot = document.getElementById("lblFooterVer");
+        if (verFoot) verFoot.textContent = verStr;
+
         ensureHostScriptLoaded(function () {
             refreshActiveCompDetails();
         });
@@ -5518,6 +5915,32 @@
         bindCopilotEvents();
         renderMapStyleGallery("all");
         updateActiveMapStylePillLabel();
+
+        // Drag-and-Drop GeoJSON / GPX / KML / CSV directly onto the Map Viewport!
+        var vpWrap = document.querySelector(".gl-viewport-wrapper");
+        if (vpWrap) {
+            vpWrap.addEventListener("dragover", function (ev) {
+                ev.preventDefault();
+                vpWrap.style.outline = "2px dashed #38bdf8";
+            });
+            vpWrap.addEventListener("dragleave", function () {
+                vpWrap.style.outline = "";
+            });
+            vpWrap.addEventListener("drop", function (ev) {
+                ev.preventDefault();
+                vpWrap.style.outline = "";
+                var files = ev.dataTransfer && ev.dataTransfer.files;
+                var fileInp = document.getElementById("inpImportGeoJSONFile");
+                if (files && files.length && fileInp) {
+                    try {
+                        var dt = new DataTransfer();
+                        dt.items.add(files[0]);
+                        fileInp.files = dt.files;
+                        fileInp.dispatchEvent(new Event("change"));
+                    } catch (eDrop) {}
+                }
+            });
+        }
 
         // Check for updates quietly in background after 3 seconds
         setTimeout(function () {

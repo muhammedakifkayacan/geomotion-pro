@@ -886,12 +886,33 @@ var GeoMotionHost = (function () {
                     }
                 }
 
+                var keyTimes = [];
+                var keyProps = [zP, latP, lonP, pP, bP];
+                for (var kp = 0; kp < keyProps.length; kp++) {
+                    var pr = keyProps[kp];
+                    if (!pr || pr.numKeys < 1) continue;
+                    for (var ki = 1; ki <= pr.numKeys; ki++) {
+                        var kt = Number(pr.keyTime(ki).toFixed(2));
+                        var exists = false;
+                        for (var ex = 0; ex < keyTimes.length; ex++) {
+                            if (Math.abs(keyTimes[ex] - kt) < 0.05) {
+                                exists = true;
+                                break;
+                            }
+                        }
+                        if (!exists) keyTimes.push(kt);
+                    }
+                }
+                keyTimes.sort(function (a, b) { return a - b; });
+
                 return JSON.stringify({
                     ok: true,
                     compName: comp.name,
                     width: comp.width,
                     height: comp.height,
+                    duration: Number(comp.duration.toFixed(2)),
                     time: Number(t.toFixed(3)),
+                    keyframes: keyTimes,
                     lat: lat,
                     lon: lon,
                     zoom: zCur,
@@ -1333,6 +1354,16 @@ var GeoMotionHost = (function () {
                     } catch (eGeom) {}
                 }
 
+                if (data.placerMode === "02_place_bottom") {
+                    for (var bi = 1; bi <= comp.numLayers; bi++) {
+                        var bNm = comp.layer(bi).name;
+                        if (bNm.indexOf("MAP_TILES_") === 0 || bNm.indexOf("MAPCOMP_ATLAS_") === 0 || bNm === "MAP_BACKGROUND_CANVAS") {
+                            shapeLayer.moveBefore(comp.layer(bi));
+                            break;
+                        }
+                    }
+                }
+
                 app.endUndoGroup();
                 return JSON.stringify({
                     ok: true,
@@ -1389,10 +1420,16 @@ var GeoMotionHost = (function () {
                     var dx = p1[0] - p0[0];
                     var dy = p1[1] - p0[1];
                     var dist = Math.sqrt(dx * dx + dy * dy);
-                    var mid = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2 - dist * 0.28];
-                    vertices = [p0, mid, p1];
-                    myShape.inTangents = [[0, 0], [-dx * 0.2, 0], [0, 0]];
-                    myShape.outTangents = [[0, 0], [dx * 0.2, 0], [0, 0]];
+                    var arcVerts = [];
+                    var arcSteps = 32;
+                    for (var ai = 0; ai <= arcSteps; ai++) {
+                        var at = ai / arcSteps;
+                        arcVerts.push([
+                            p0[0] + dx * at,
+                            p0[1] + dy * at - Math.sin(Math.PI * at) * dist * 0.24
+                        ]);
+                    }
+                    vertices = arcVerts;
                 }
 
                 myShape.vertices = vertices;
@@ -1454,12 +1491,27 @@ var GeoMotionHost = (function () {
                     }
 
                     var posProp = headLayer.property("Transform").property("Position");
-                    var sampleCount = Math.min(vertices.length, 32);
+                    var sampleCount = Math.max(2, Math.min(vertices.length, 36));
                     for (var s = 0; s < sampleCount; s++) {
-                        var vIdx = Math.min(vertices.length - 1, Math.floor((s / (sampleCount - 1)) * (vertices.length - 1)));
-                        var vPt = vertices[vIdx];
-                        var tKey = startTime + (s / (sampleCount - 1)) * duration;
-                        posProp.setValueAtTime(tKey, [vPt[0], vPt[1], -6]);
+                        var frac = s / (sampleCount - 1);
+                        var exactIdx = frac * (vertices.length - 1);
+                        var idx0 = Math.floor(exactIdx);
+                        var idx1 = Math.min(vertices.length - 1, idx0 + 1);
+                        var subT = exactIdx - idx0;
+                        var vx = vertices[idx0][0] + (vertices[idx1][0] - vertices[idx0][0]) * subT;
+                        var vy = vertices[idx0][1] + (vertices[idx1][1] - vertices[idx0][1]) * subT;
+                        var tKey = startTime + frac * duration;
+                        posProp.setValueAtTime(tKey, [vx, vy, -6]);
+                    }
+                }
+
+                if (data.placerMode === "02_place_bottom") {
+                    for (var rbi = 1; rbi <= comp.numLayers; rbi++) {
+                        var rbNm = comp.layer(rbi).name;
+                        if (rbNm.indexOf("MAP_TILES_") === 0 || rbNm.indexOf("MAPCOMP_ATLAS_") === 0 || rbNm === "MAP_BACKGROUND_CANVAS") {
+                            routeLayer.moveBefore(comp.layer(rbi));
+                            break;
+                        }
                     }
                 }
 
@@ -1534,7 +1586,8 @@ var GeoMotionHost = (function () {
                     "[p[0], p[1]];"
                 ].join("\n");
 
-                if (data.autoCounterScale === false) {
+                var autoScale = (data.autoCounterScale !== undefined) ? data.autoCounterScale : data.counterScale;
+                if (autoScale === false) {
                     pinLayer.property("Transform").property("Scale").expression = [
                         "function getCtrl(){ try { return thisComp.layer('MAP_CAMERA_CONTROLLER'); } catch(e){ return thisComp.layer('GEO_MAPCOMP_CONTROL'); } }",
                         "var ctrl = getCtrl();",
@@ -1548,7 +1601,8 @@ var GeoMotionHost = (function () {
                 }
 
                 var contents = pinLayer.property("Contents");
-                var style = data.style || "location";
+                var style = data.style || data.template || "location";
+                var pinHex = data.color || data.accentColor || (style === "location" ? "#ef4444" : "#38bdf8");
 
                 if (style === "location") {
                     // 1. Ground Contact Shadow
@@ -1594,7 +1648,7 @@ var GeoMotionHost = (function () {
                     pShapeProp.property("Path").setValue(pShape);
 
                     var pinFill = pinGrp.property("Contents").addProperty("ADBE Vector Graphic - Fill");
-                    pinFill.property("Color").setValue(hexToRgb(data.color || "#ef4444"));
+                    pinFill.property("Color").setValue(hexToRgb(pinHex));
 
                     var pinStroke = pinGrp.property("Contents").addProperty("ADBE Vector Graphic - Stroke");
                     pinStroke.property("Color").setValue([1, 1, 1]);
@@ -1614,7 +1668,7 @@ var GeoMotionHost = (function () {
                     var rEllipse = radarGrp.property("Contents").addProperty("ADBE Vector Shape - Ellipse");
                     rEllipse.property("Size").setValue([60, 60]);
                     var rStroke = radarGrp.property("Contents").addProperty("ADBE Vector Graphic - Stroke");
-                    rStroke.property("Color").setValue(hexToRgb(data.color || "#38bdf8"));
+                    rStroke.property("Color").setValue(hexToRgb(pinHex));
                     rStroke.property("Stroke Width").setValue(2.5);
                     radarGrp.property("Transform").property("Scale").expression =
                         "var s = (time * 85) % 100; [40 + s * 1.4, 40 + s * 1.4];";
@@ -1634,7 +1688,7 @@ var GeoMotionHost = (function () {
                     bFill.property("Color").setValue([0.07, 0.1, 0.16]);
                     bFill.property("Opacity").setValue(88);
                     var bStroke = boxGrp.property("Contents").addProperty("ADBE Vector Graphic - Stroke");
-                    bStroke.property("Color").setValue(hexToRgb(data.color || "#38bdf8"));
+                    bStroke.property("Color").setValue(hexToRgb(pinHex));
                     bStroke.property("Stroke Width").setValue(2);
                 }
 
@@ -1651,7 +1705,7 @@ var GeoMotionHost = (function () {
                         cEllipse.property("Size").setValue([18, 18]);
                     }
                     var cFill = dotGrp.property("Contents").addProperty("ADBE Vector Graphic - Fill");
-                    cFill.property("Color").setValue(hexToRgb(data.color || "#38bdf8"));
+                    cFill.property("Color").setValue(hexToRgb(pinHex));
                     var cStroke = dotGrp.property("Contents").addProperty("ADBE Vector Graphic - Stroke");
                     cStroke.property("Color").setValue([1, 1, 1]);
                     cStroke.property("Stroke Width").setValue(3);
@@ -2055,7 +2109,9 @@ var GeoMotionHost = (function () {
                     }
                 }
 
-                newComp.openInViewer();
+                if (data.openAfterDup !== false) {
+                    newComp.openInViewer();
+                }
                 app.endUndoGroup();
                 return JSON.stringify({
                     ok: true,
@@ -2840,7 +2896,8 @@ var GeoMotionHost = (function () {
                     var nm = l.name;
                     if (nm.indexOf("BOUNDARY_") === 0 || nm.indexOf("PIN_") === 0 || nm.indexOf("ROUTE_") === 0 || nm.indexOf("DATA_STYLE_") === 0 || nm.indexOf("FEATURE_") === 0) {
                         var tIn = startT + idx * stepSec;
-                        l.inPoint = tIn;
+                        var deltaT = tIn - l.inPoint;
+                        l.startTime = l.startTime + deltaT;
                         var op = l.property("Transform").property("Opacity");
                         if (op && op.numKeys === 0) {
                             op.setValueAtTime(tIn, 0);
@@ -2856,6 +2913,293 @@ var GeoMotionHost = (function () {
                     ok: true,
                     count: idx,
                     message: idx + " adet coğrafi katman Zaman Serisi (Time-Series: " + stepSec + "s aralıkla) olarak sıraya dizildi!"
+                });
+            } catch (err) {
+                app.endUndoGroup();
+                return JSON.stringify({ ok: false, error: err.toString() });
+            }
+        },
+
+        setMapcompTime: function (payloadJson) {
+            try {
+                var data = JSON.parse(payloadJson || "{}");
+                var comp = findExistingGeoComp(data);
+                if (!comp || !(comp instanceof CompItem)) {
+                    return JSON.stringify({ ok: false, error: "Aktif bir Mapcomp bulunamadı." });
+                }
+                var targetT = Math.max(0, Math.min(comp.duration, parseFloat(data.time) || 0));
+                comp.time = targetT;
+                return GeoMotionHost.getCurrentMapcompViewState(payloadJson);
+            } catch (err) {
+                return JSON.stringify({ ok: false, error: err.toString() });
+            }
+        },
+
+        deleteMapcompKeyframe: function (payloadJson) {
+            app.beginUndoGroup("GeoMotion: Delete Camera Keyframe");
+            try {
+                var data = JSON.parse(payloadJson || "{}");
+                var comp = findExistingGeoComp(data);
+                if (!comp || !(comp instanceof CompItem)) {
+                    app.endUndoGroup();
+                    return JSON.stringify({ ok: false, error: "Aktif bir Mapcomp bulunamadı." });
+                }
+                var ctrlLayer = null;
+                for (var i = 1; i <= comp.numLayers; i++) {
+                    var nm = comp.layer(i).name;
+                    if (nm === "MAP_CAMERA_CONTROLLER" || nm === "GEO_MAPCOMP_CONTROL") {
+                        ctrlLayer = comp.layer(i);
+                        break;
+                    }
+                }
+                if (!ctrlLayer) {
+                    app.endUndoGroup();
+                    return JSON.stringify({ ok: false, error: "Kamera kontrolcüsü bulunamadı." });
+                }
+                var fx = ctrlLayer.property("ADBE Effect Parade");
+                var propNames = ["Mapcomp Latitude", "Mapcomp Longitude", "Mapcomp Zoom", "Mapcomp Pitch", "Mapcomp Bearing"];
+                var removed = 0;
+                var clearAll = (data.clearAll === true);
+                var targetT = parseFloat(data.time) || 0;
+
+                for (var p = 0; p < propNames.length; p++) {
+                    var sl = fx.property(propNames[p]);
+                    if (!sl) continue;
+                    var pr = sl.property(1);
+                    if (!pr || pr.numKeys < 1) continue;
+                    if (clearAll) {
+                        var curVal = pr.valueAtTime(comp.time, false);
+                        while (pr.numKeys > 0) {
+                            pr.removeKey(1);
+                            removed++;
+                        }
+                        pr.setValue(curVal);
+                    } else {
+                        for (var k = pr.numKeys; k >= 1; k--) {
+                            if (Math.abs(pr.keyTime(k) - targetT) <= 0.08) {
+                                pr.removeKey(k);
+                                removed++;
+                            }
+                        }
+                    }
+                }
+
+                app.endUndoGroup();
+                return JSON.stringify({
+                    ok: true,
+                    removed: removed,
+                    message: clearAll
+                        ? "Tüm kamera keyframe'leri temizlendi."
+                        : ("◆ " + targetT.toFixed(1) + "s konumundaki kamera keyframe'i silindi.")
+                });
+            } catch (err) {
+                app.endUndoGroup();
+                return JSON.stringify({ ok: false, error: err.toString() });
+            }
+        },
+
+        undoLastGeoAction: function (payloadJson) {
+            try {
+                // Command ID 16 is universal Edit > Undo in After Effects across all locales
+                app.executeCommand(16);
+                return JSON.stringify({
+                    ok: true,
+                    message: "↶ Son işlem After Effects'te geri alındı (Undo)."
+                });
+            } catch (err) {
+                return JSON.stringify({ ok: false, error: err.toString() });
+            }
+        },
+
+        clearMapcompOverlays: function (payloadJson) {
+            app.beginUndoGroup("GeoMotion: Clear Scene Overlays");
+            try {
+                var data = JSON.parse(payloadJson || "{}");
+                var comp = findExistingGeoComp(data);
+                if (!comp || !(comp instanceof CompItem)) {
+                    app.endUndoGroup();
+                    return JSON.stringify({ ok: false, error: "Temizlenecek aktif bir Mapcomp bulunamadı." });
+                }
+                var removedCount = 0;
+                var prefixes = [
+                    "PIN_", "PIN_TEXT_", "BOUNDARY_", "ROUTE_", "ROUTE_TRACKER_",
+                    "DATA_STYLE_", "DATA_BAR_", "FEATURE_", "HELPLINES_", "LOCATOR_"
+                ];
+                var exactNames = [
+                    "MAP_NORTH_COMPASS", "MAP_SCALE_BAR", "MAP_SCALE_TEXT",
+                    "MAP_WATERMASK_MATTE", "MAP_STYLE_COLORIZER", "MAP_HORIZON_FOG"
+                ];
+
+                for (var i = comp.numLayers; i >= 1; i--) {
+                    var nm = comp.layer(i).name;
+                    var match = false;
+                    for (var p = 0; p < prefixes.length; p++) {
+                        if (nm.indexOf(prefixes[p]) === 0) {
+                            match = true;
+                            break;
+                        }
+                    }
+                    if (!match) {
+                        for (var e = 0; e < exactNames.length; e++) {
+                            if (nm === exactNames[e]) {
+                                match = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (match) {
+                        comp.layer(i).remove();
+                        removedCount++;
+                    }
+                }
+
+                app.endUndoGroup();
+                return JSON.stringify({
+                    ok: true,
+                    removedCount: removedCount,
+                    message: removedCount > 0
+                        ? ("🧹 Sahnedeki " + removedCount + " çizim/efekt katmanı temizlendi (Harita karoları korundu).")
+                        : "Sahnede silinecek çizim katmanı bulunmuyor."
+                });
+            } catch (err) {
+                app.endUndoGroup();
+                return JSON.stringify({ ok: false, error: err.toString() });
+            }
+        },
+
+        applyQuickVisualRecipe: function (payloadJson) {
+            app.beginUndoGroup("GeoMotion: Apply Quick Style Recipe");
+            try {
+                var data = JSON.parse(payloadJson || "{}");
+                var comp = findExistingGeoComp(data);
+                if (!comp || !(comp instanceof CompItem)) {
+                    app.endUndoGroup();
+                    return JSON.stringify({
+                        ok: true,
+                        onlyPreview: true,
+                        message: "🎨 '" + (data.recipeLabel || "Görsel Şablon") + "' önizlemeye ve çizim ayarlarına uygulandı!"
+                    });
+                }
+
+                ensureMapcompRig(comp, data);
+
+                // 1. Update or replace MAP_STYLE_COLORIZER
+                for (var cIdx = comp.numLayers; cIdx >= 1; cIdx--) {
+                    if (comp.layer(cIdx).name === "MAP_STYLE_COLORIZER") {
+                        comp.layer(cIdx).remove();
+                    }
+                }
+                if (data.useColorizer) {
+                    var adj = comp.layers.addSolid([1, 1, 1], "MAP_STYLE_COLORIZER", comp.width, comp.height, 1.0);
+                    adj.adjustmentLayer = true;
+                    adj.label = 12;
+                    for (var j = 1; j <= comp.numLayers; j++) {
+                        var nm = comp.layer(j).name;
+                        if (nm.indexOf("MAP_TILES_") === 0 || nm.indexOf("MAPCOMP_ATLAS_") === 0 || nm === "MAP_BACKGROUND_CANVAS") {
+                            adj.moveBefore(comp.layer(j));
+                            break;
+                        }
+                    }
+                    try {
+                        var tritone = adj.property("ADBE Effect Parade").addProperty("ADBE Tritone");
+                        if (tritone) {
+                            tritone.property(1).setValue(hexToRgb(data.highlightColor || "#e2e8f0"));
+                            tritone.property(2).setValue(hexToRgb(data.landColor || "#1e293b"));
+                            tritone.property(3).setValue(hexToRgb(data.waterColor || "#090d16"));
+                            tritone.property(4).setValue(parseFloat(data.blendAmount !== undefined ? data.blendAmount : 25));
+                        }
+                    } catch (eTri) {}
+                }
+
+                // 2. Update existing BOUNDARY_ & ROUTE_ layers with recipe stroke/fill/glow/shadow
+                var fillRgb = hexToRgb(data.fillColor || "#38bdf8");
+                var strokeRgb = hexToRgb(data.strokeColor || "#f8fafc");
+                var sWidth = parseFloat(data.strokeWidth) || 4;
+                var addGlow = !!data.enableGlow;
+                var addShadow = !!data.enableShadow;
+
+                for (var li = 1; li <= comp.numLayers; li++) {
+                    var lyr = comp.layer(li);
+                    var lName = lyr.name;
+                    if (lName.indexOf("BOUNDARY_") === 0 || lName.indexOf("ROUTE_") === 0) {
+                        try {
+                            var cnt = lyr.property("Contents");
+                            if (cnt) {
+                                for (var gi = 1; gi <= cnt.numProperties; gi++) {
+                                    var grp = cnt.property(gi);
+                                    var gCnt = grp.property("Contents");
+                                    if (!gCnt) continue;
+                                    var stProp = gCnt.property("ADBE Vector Graphic - Stroke");
+                                    if (stProp) {
+                                        stProp.property("Color").setValue(strokeRgb);
+                                        stProp.property("Stroke Width").setValue(sWidth);
+                                    }
+                                    if (lName.indexOf("BOUNDARY_") === 0) {
+                                        var flProp = gCnt.property("ADBE Vector Graphic - Fill");
+                                        if (flProp) flProp.property("Color").setValue(fillRgb);
+                                    }
+                                }
+                            }
+                            var fxP = lyr.property("ADBE Effect Parade");
+                            if (fxP) {
+                                // Clean previous Glow if switching away
+                                for (var fi = fxP.numProperties; fi >= 1; fi--) {
+                                    var fxMatch = fxP.property(fi).matchName;
+                                    if (fxMatch === "ADBE Glo2") {
+                                        fxP.property(fi).remove();
+                                    }
+                                }
+                                if (addGlow) {
+                                    var glw = fxP.addProperty("ADBE Glo2");
+                                    if (glw) {
+                                        glw.property(2).setValue(45); // Threshold
+                                        glw.property(3).setValue(38); // Radius
+                                        glw.property(4).setValue(1.4); // Intensity
+                                    }
+                                }
+                                if (addShadow && !fxP.property("Drop Shadow")) {
+                                    var ds = fxP.addProperty("ADBE Drop Shadow");
+                                    if (ds) {
+                                        ds.property(2).setValue(140);
+                                        ds.property(4).setValue(10);
+                                        ds.property(5).setValue(24);
+                                    }
+                                }
+                            }
+                        } catch (eLyr) {}
+                    }
+                }
+
+                // 3. Optional Horizon Fog for Breaking News / Cinematic look
+                for (var fgIdx = comp.numLayers; fgIdx >= 1; fgIdx--) {
+                    if (comp.layer(fgIdx).name === "MAP_HORIZON_FOG") {
+                        comp.layer(fgIdx).remove();
+                    }
+                }
+                if (data.enableFog) {
+                    var fogLayer = comp.layers.addShape();
+                    fogLayer.name = "MAP_HORIZON_FOG";
+                    fogLayer.property("Position").setValue([comp.width / 2, comp.height * 0.12]);
+                    var fgGrp = fogLayer.property("Contents").addProperty("ADBE Vector Group");
+                    var fgRect = fgGrp.property("Contents").addProperty("ADBE Vector Shape - Rect");
+                    fgRect.property("Size").setValue([comp.width * 1.5, comp.height * 0.35]);
+                    var fgFill = fgGrp.property("Contents").addProperty("ADBE Vector Graphic - Fill");
+                    fgFill.property("Color").setValue(hexToRgb(data.waterColor || "#090d16"));
+                    try {
+                        var blurFx = fogLayer.property("ADBE Effect Parade").addProperty("ADBE Gaussian Blur 2");
+                        if (blurFx) blurFx.property(1).setValue(140);
+                    } catch (eBlur) {}
+                    fogLayer.property("Transform").property("Opacity").expression = [
+                        "function getCtrl(){ try { return thisComp.layer('MAP_CAMERA_CONTROLLER'); } catch(e){ return thisComp.layer('GEO_MAPCOMP_CONTROL'); } }",
+                        "var p = getCtrl().effect('Mapcomp Pitch')('Slider');",
+                        "linear(p, 15, 60, 0, 80);"
+                    ].join("\n");
+                }
+
+                app.endUndoGroup();
+                return JSON.stringify({
+                    ok: true,
+                    message: "🎨 '" + (data.recipeLabel || "Görsel Şablon") + "' hem önizlemeye hem After Effects sahnesine uygulandı!"
                 });
             } catch (err) {
                 app.endUndoGroup();

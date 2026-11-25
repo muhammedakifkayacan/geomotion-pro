@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<ExtensionManifest Version="7.0" ExtensionBundleId="com.geomotion.cep" ExtensionBundleVersion="3.0.0" ExtensionBundleName="GeoMotion Pro" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<ExtensionManifest Version="7.0" ExtensionBundleId="com.geomotion.cep" ExtensionBundleVersion="3.0.2" ExtensionBundleName="GeoMotion Pro" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <ExtensionList>
-    <Extension Id="com.geomotion.cep.panel" Version="3.0.0"/>
+    <Extension Id="com.geomotion.cep.panel" Version="3.0.2"/>
   </ExtensionList>
   <ExecutionEnvironment>
     <HostList>
