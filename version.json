@@ -1,10 +1,10 @@
 {
-  "version": "3.0.2",
+  "version": "3.0.3",
   "name": "GeoMotion Pro",
-  "releaseDate": "2026-11-25",
+  "releaseDate": "2026-11-26",
   "minAEVersion": "13.0",
   "githubRepo": "muhammedakifkayacan/geomotion-pro",
-  "changelog": "• Panel İçi Mini Keyframe Zaman Çizelgesi (Timeline Scrubber) eklendi: AE timeline'a inmeden ◆ keyframe noktalarını görme, tıklayıp o saniyeye gitme ve sağ tıkla keyframe silme.\n• Tek Tık Görsel Stil Şablonları eklendi (Vox Belgesel, Neon Glow, Eski Kağıt / Arşiv, Son Dakika Haber).\n• Üst araç çubuğuna Hızlı Geri Al (↶ Undo) ve Sahne Çizimlerini Temizle (🧹 Temizle) butonları eklendi.\n• Uçuş rotası (Flight) 36 noktalı pürüzsüz eğri ve ok takibi, GeoCopilot kadraj/pin eşleşmesi, Time-Series sıralama, Feature Collection tekil silme (✕) ve haritaya sürükle-bırak GeoJSON/GPX/CSV desteği iyileştirildi.",
+  "changelog": "• Yeni Formata Çoğalt (Dikey <-> Yatay / 4K) ve Ölçü Değiştir işlemlerinde kamera, harita karoları, sınırlar, pusula, ölçek çubuğu ve Locator (köşe haritası) katmanlarının kayma sorunu tamamen giderildi.\n• Mevcut projelerdeki eski pin ve etiket katmanlarını silmeden gerçek coğrafi koordinatlarına otomatik geri oturtan akıllı katman onarım sistemi eklendi.\n• After Effects içinden (Cmd+K / Ctrl+K) manuel kompozisyon boyutu değiştirildiğinde otomatik algılama ve merkezleme eklendi.",
   "downloads": {
     "mac": "https://github.com/{repo}/releases/latest/download/GeoMotion_Pro_v3.0_macOS_Installer.dmg",
     "win": "https://github.com/{repo}/releases/latest/download/GeoMotion_Pro_v3.0_Windows_Setup.exe",

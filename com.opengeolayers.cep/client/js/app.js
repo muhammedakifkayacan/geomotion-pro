@@ -2572,7 +2572,7 @@
     // =========================================================================
     // GEOUPDATER: AUTOMATIC & ON-DEMAND GITHUB UPDATE ENGINE
     // =========================================================================
-    var CURRENT_VERSION = "3.0.2";
+    var CURRENT_VERSION = "3.0.3";
     var GeoUpdater = {
         currentVersion: CURRENT_VERSION,
         defaultRepo: "muhammedakifkayacan/geomotion-pro",
@@ -4939,6 +4939,9 @@
                             window.__activeCompWidth = w;
                             window.__activeCompHeight = h;
                             updateMapcompGuideBox(w, h);
+                            if (typeof window.syncPreviewFromAE === "function") {
+                                window.syncPreviewFromAE(true);
+                            }
                         }
                         closeCompSettingsModal();
                     } else {

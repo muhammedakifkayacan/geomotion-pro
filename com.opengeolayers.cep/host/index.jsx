@@ -245,6 +245,368 @@ var GeoMotionHost = (function () {
         }
     }
 
+    function buildDynamicPinPositionExpr() {
+        return [
+            "function getCtrl(){ try { return thisComp.layer('MAP_CAMERA_CONTROLLER'); } catch(e){ return thisComp.layer('GEO_MAPCOMP_CONTROL'); } }",
+            "function getAnchor(){ try { return thisComp.layer('MAP_WORLD_ANCHOR'); } catch(e){ return thisComp.layer('GEO_WORLD_ANCHOR'); } }",
+            "var ctrl = getCtrl();",
+            "var anchor = getAnchor();",
+            "var refLat = ctrl.effect('Reference Lat')('Slider');",
+            "var refLon = ctrl.effect('Reference Lon')('Slider');",
+            "var refZ = ctrl.effect('Reference Zoom')('Slider');",
+            "var myLat = effect('Feature Latitude')('Slider');",
+            "var myLon = effect('Feature Longitude')('Slider');",
+            "var scale = 256 * Math.pow(2, refZ);",
+            "function px(lo){ return (lo + 180.0) / 360.0 * scale; }",
+            "function py(la){ var s = Math.sin(la * Math.PI / 180.0); s = Math.min(Math.max(s, -0.9999), 0.9999); return (0.5 - Math.log((1+s)/(1-s)) / (4 * Math.PI)) * scale; }",
+            "var localPt = [(thisComp.width / 2) + (px(myLon) - px(refLon)), (thisComp.height / 2) + (py(myLat) - py(refLat)), 0];",
+            "var p = anchor.toComp(localPt);",
+            "[p[0], p[1]];"
+        ].join("\n");
+    }
+
+    function buildDynamicLocatorTargetPosExpr(boxW, boxH) {
+        return [
+            "function getCtrl(){ try { return thisComp.layer('MAP_CAMERA_CONTROLLER'); } catch(e){ return thisComp.layer('GEO_MAPCOMP_CONTROL'); } }",
+            "var c = getCtrl();",
+            "var f = thisComp.layer('LOCATOR_INSET_FRAME');",
+            "var fPos = f.transform.position;",
+            "var fScale = f.transform.scale[0] / 100.0;",
+            "var lat = c.effect('Mapcomp Latitude')('Slider');",
+            "var lon = c.effect('Mapcomp Longitude')('Slider');",
+            "var x = fPos[0] + (lon / 180.0) * (" + (boxW / 2 - 16) + " * fScale);",
+            "var y = fPos[1] - (lat / 85.0) * (" + (boxH / 2 - 12) + " * fScale);",
+            "[x, y];"
+        ].join("\n");
+    }
+
+    function mercatorOffsetToLatLon(dx, dy, refLat, refLon, refZ) {
+        var scale = 256.0 * Math.pow(2.0, refZ);
+        var sRef = Math.sin(refLat * Math.PI / 180.0);
+        sRef = Math.min(Math.max(sRef, -0.9999), 0.9999);
+        var pyRef = (0.5 - Math.log((1.0 + sRef) / (1.0 - sRef)) / (4.0 * Math.PI)) * scale;
+        var myLon = refLon + (dx / scale) * 360.0;
+        var pyMy = pyRef + dy;
+        var g = Math.PI * (1.0 - 2.0 * (pyMy / scale));
+        var myLat = Math.atan(0.5 * (Math.exp(g) - Math.exp(-g))) * 180.0 / Math.PI;
+        return [myLat, myLon];
+    }
+
+    function tryExtractCoordsFromPinOrText(comp, pinLayer) {
+        try {
+            // 1. Check layer name e.g. "PIN_Konum (36.2562, 36.6150)"
+            var mName = String(pinLayer.name || "").match(/\(\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)\s*\)/);
+            if (mName) {
+                var la1 = parseFloat(mName[1]), lo1 = parseFloat(mName[2]);
+                if (!isNaN(la1) && !isNaN(lo1) && Math.abs(la1) <= 90 && Math.abs(lo1) <= 180) {
+                    return [la1, lo1];
+                }
+            }
+            // 2. Check child PIN_TEXT_ layer subtitle e.g. "36.27° N, 36.57° E"
+            for (var i = 1; i <= comp.numLayers; i++) {
+                var tl = comp.layer(i);
+                if (tl.parent === pinLayer && tl.name.indexOf("PIN_TEXT_") === 0) {
+                    var txtProp = tl.property("Source Text");
+                    if (txtProp) {
+                        var rawTxt = String(txtProp.value.text || txtProp.value || "");
+                        var mDeg = rawTxt.match(/(-?\d+\.\d+)\s*\u00b0?\s*([NS])?\s*,\s*(-?\d+\.\d+)\s*\u00b0?\s*([EW])?/i);
+                        if (mDeg) {
+                            var la2 = parseFloat(mDeg[1]);
+                            var lo2 = parseFloat(mDeg[3]);
+                            if (mDeg[2] && mDeg[2].toUpperCase() === "S" && la2 > 0) la2 = -la2;
+                            if (mDeg[4] && mDeg[4].toUpperCase() === "W" && lo2 > 0) lo2 = -lo2;
+                            if (!isNaN(la2) && !isNaN(lo2) && Math.abs(la2) <= 90 && Math.abs(lo2) <= 180) {
+                                return [la2, lo2];
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (eEx) {}
+        return null;
+    }
+
+    function upgradeAndHealPinLayers(comp, ctrlLayer, knownOldW, knownOldH) {
+        if (!comp || !ctrlLayer) return;
+        try {
+            var fx = ctrlLayer.property("ADBE Effect Parade");
+            var refLat = fx.property("Reference Lat").property(1).value;
+            var refLon = fx.property("Reference Lon").property(1).value;
+            var refZ = fx.property("Reference Zoom").property(1).value;
+            var camLat = fx.property("Mapcomp Latitude").property(1).valueAtTime(comp.time, false);
+            var camLon = fx.property("Mapcomp Longitude").property(1).valueAtTime(comp.time, false);
+            var camOffsetXY = latLonToCompXY(camLat, camLon, refLat, refLon, refZ, 0, 0); // [dx_cam, dy_cam]
+
+            // First pass: detect exact legacy [oldHalfW, oldHalfH] if not explicitly provided
+            var inferredHalfW = (knownOldW && knownOldW > 0) ? (knownOldW / 2.0) : null;
+            var inferredHalfH = (knownOldH && knownOldH > 0) ? (knownOldH / 2.0) : null;
+
+            if (inferredHalfW === null || inferredHalfH === null) {
+                for (var sIdx = 1; sIdx <= comp.numLayers; sIdx++) {
+                    var sLyr = comp.layer(sIdx);
+                    if (sLyr.name.indexOf("PIN_") !== 0 || sLyr.name.indexOf("PIN_TEXT_") === 0) continue;
+                    var sFx = sLyr.property("ADBE Effect Parade");
+                    if (sFx && sFx.property("Feature Latitude") && sFx.property("Feature Longitude")) continue;
+                    var sPosProp = sLyr.property("Transform").property("Position");
+                    var sExpr = sPosProp.expression || "";
+                    var mToComp = sExpr.match(/toComp\(\s*\[\s*([-\d.]+)\s*,\s*([-\d.]+)/);
+                    if (mToComp) {
+                        var lx = parseFloat(mToComp[1]), ly = parseFloat(mToComp[2]);
+                        var knownLL = tryExtractCoordsFromPinOrText(comp, sLyr);
+                        if (knownLL) {
+                            var offKnown = latLonToCompXY(knownLL[0], knownLL[1], refLat, refLon, refZ, 0, 0);
+                            inferredHalfW = lx - offKnown[0];
+                            inferredHalfH = ly - offKnown[1];
+                            break;
+                        }
+                    }
+                }
+            }
+
+            var presetHalfCenters = [
+                [540, 960],   // 1080x1920 Reels
+                [960, 540],   // 1920x1080 FHD
+                [1920, 1080], // 3840x2160 4K
+                [540, 540],   // 1080x1080 Square
+                [540, 675],   // 1080x1350 4:5
+                [1280, 540]   // 2560x1080 Ultrawide
+            ];
+
+            function snapOrGuessHalfCenter(lx, ly) {
+                if (inferredHalfW !== null && inferredHalfH !== null) {
+                    // Snap to exact preset if within 30px (eliminates float rounding from 2-decimal text subtitles)
+                    for (var pi = 0; pi < presetHalfCenters.length; pi++) {
+                        var pc = presetHalfCenters[pi];
+                        if (Math.abs(inferredHalfW - pc[0]) < 30 && Math.abs(inferredHalfH - pc[1]) < 30) {
+                            return [pc[0], pc[1]];
+                        }
+                    }
+                    return [inferredHalfW, inferredHalfH];
+                }
+                var estW = lx - camOffsetXY[0];
+                var estH = ly - camOffsetXY[1];
+                var best = [comp.width / 2.0, comp.height / 2.0];
+                var bestDist = 999999999;
+                for (var j = 0; j < presetHalfCenters.length; j++) {
+                    var c = presetHalfCenters[j];
+                    var d = (estW - c[0]) * (estW - c[0]) + (estH - c[1]) * (estH - c[1]);
+                    if (d < bestDist) {
+                        bestDist = d;
+                        best = c;
+                    }
+                }
+                return best;
+            }
+
+            for (var pIdx = 1; pIdx <= comp.numLayers; pIdx++) {
+                var pLyr = comp.layer(pIdx);
+                if (pLyr.name.indexOf("PIN_") === 0 && pLyr.name.indexOf("PIN_TEXT_") !== 0) {
+                    var pFx = pLyr.property("ADBE Effect Parade");
+                    var hasSliders = !!(pFx && pFx.property("Feature Latitude") && pFx.property("Feature Longitude"));
+                    var posProp = pLyr.property("Transform").property("Position");
+                    var exprStr = posProp.expression || "";
+
+                    // Ensure Anchor Point is [0, 0] for 2D pins
+                    if (!pLyr.threeDLayer) {
+                        try {
+                            var ap = pLyr.property("Transform").property("Anchor Point").value;
+                            if (ap && (Math.abs(ap[0]) > 0.01 || Math.abs(ap[1]) > 0.01)) {
+                                pLyr.property("Transform").property("Anchor Point").setValue([0, 0]);
+                            }
+                        } catch (eAp) {}
+                    }
+
+                    if (pLyr.threeDLayer) {
+                        var pPosVal = posProp.value;
+                        var baseHW = (knownOldW && knownOldW > 0) ? (knownOldW / 2.0) : (comp.width / 2.0);
+                        var baseHH = (knownOldH && knownOldH > 0) ? (knownOldH / 2.0) : (comp.height / 2.0);
+                        var ll3d = tryExtractCoordsFromPinOrText(comp, pLyr) ||
+                            mercatorOffsetToLatLon((pPosVal[0] || baseHW) - baseHW, (pPosVal[1] || baseHH) - baseHH, refLat, refLon, refZ);
+
+                        pLyr.threeDLayer = false;
+                        pLyr.parent = null;
+                        pLyr.property("Transform").property("Anchor Point").setValue([0, 0]);
+                        addOrGetSlider(pLyr, "Feature Latitude", ll3d[0]);
+                        addOrGetSlider(pLyr, "Feature Longitude", ll3d[1]);
+                        posProp.expression = buildDynamicPinPositionExpr();
+                        pLyr.property("Transform").property("Scale").expression = "";
+                        pLyr.property("Transform").property("Scale").setValue([100, 100]);
+                        pLyr.property("Transform").property("Rotation").expression = "";
+                        pLyr.property("Transform").property("Rotation").setValue(0);
+                        pLyr.comment = "2D Screen-Space Pin locked to 3D Map Coordinates via toComp()";
+                    } else if (!hasSliders) {
+                        // Heal 2D pins that had baked static toComp([localX, localY, 0]) from an older comp resolution!
+                        var m = exprStr.match(/toComp\(\s*\[\s*([-\d.]+)\s*,\s*([-\d.]+)/);
+                        if (m) {
+                            var rawX = parseFloat(m[1]);
+                            var rawY = parseFloat(m[2]);
+                            var hc = snapOrGuessHalfCenter(rawX, rawY);
+                            var ll2d = mercatorOffsetToLatLon(rawX - hc[0], rawY - hc[1], refLat, refLon, refZ);
+                            // If layer name itself has high-precision (4+ decimal) coordinates, prefer exact
+                            var nameMatch = String(pLyr.name || "").match(/\(\s*(-?\d+\.\d{3,})\s*,\s*(-?\d+\.\d{3,})\s*\)/);
+                            if (nameMatch) {
+                                ll2d = [parseFloat(nameMatch[1]), parseFloat(nameMatch[2])];
+                            }
+                            pLyr.property("Transform").property("Anchor Point").setValue([0, 0]);
+                            addOrGetSlider(pLyr, "Feature Latitude", ll2d[0]);
+                            addOrGetSlider(pLyr, "Feature Longitude", ll2d[1]);
+                            posProp.expression = buildDynamicPinPositionExpr();
+                            pLyr.comment = "Healed 2D Screen-Space Pin with Dynamic Geo Sliders";
+                        }
+                    }
+                } else if (pLyr.name.indexOf("PIN_TEXT_") === 0 && pLyr.threeDLayer) {
+                    var tPosVal = pLyr.property("Transform").property("Position").value;
+                    pLyr.threeDLayer = false;
+                    pLyr.property("Transform").property("Position").setValue([0, tPosVal[1] || -32]);
+                    pLyr.property("Transform").property("Scale").expression = "";
+                    pLyr.property("Transform").property("Scale").setValue([100, 100]);
+                    pLyr.property("Transform").property("Rotation").expression = "";
+                    pLyr.property("Transform").property("Rotation").setValue(0);
+                } else if (pLyr.name === "LOCATOR_TARGET_BOX") {
+                    try {
+                        var locPosProp = pLyr.property("Transform").property("Position");
+                        if (locPosProp.expression && locPosProp.expression.indexOf("LOCATOR_INSET_FRAME") === -1) {
+                            locPosProp.expression = buildDynamicLocatorTargetPosExpr(320, 180);
+                        }
+                    } catch (eLocHeal) {}
+                }
+            }
+        } catch (ePinHeal) {}
+    }
+
+    function shiftPropXY(prop, dx, dy) {
+        if (!prop) return;
+        try {
+            if (prop.numKeys > 0) {
+                for (var k = 1; k <= prop.numKeys; k++) {
+                    var kv = prop.keyValue(k);
+                    if (kv && kv.length >= 2) {
+                        var nk = [kv[0] + dx, kv[1] + dy];
+                        if (kv.length >= 3) nk.push(kv[2]);
+                        prop.setValueAtKey(k, nk);
+                    }
+                }
+            } else {
+                var v = prop.value;
+                if (v && v.length >= 2) {
+                    var nv = [v[0] + dx, v[1] + dy];
+                    if (v.length >= 3) nv.push(v[2]);
+                    prop.setValue(nv);
+                }
+            }
+        } catch (eShift) {}
+    }
+
+    function recenterMapcompLayers(comp, oldW, oldH, newW, newH, cleanAtlas, recenterRig) {
+        var halfW = newW / 2.0;
+        var halfH = newH / 2.0;
+        var deltaX = (newW - oldW) / 2.0;
+        var deltaY = (newH - oldH) / 2.0;
+        var hasDelta = (Math.abs(deltaX) > 0.01 || Math.abs(deltaY) > 0.01);
+
+        for (var i = comp.numLayers; i >= 1; i--) {
+            var l = comp.layer(i);
+            var ln = l.name;
+
+            if (cleanAtlas && (ln.indexOf("MAP_TILES_") === 0 || ln.indexOf("MAPCOMP_ATLAS_") === 0)) {
+                l.remove();
+                continue;
+            }
+
+            if (recenterRig !== false) {
+                if (ln === "MAP_CAMERA_CONTROLLER" || ln === "GEO_MAPCOMP_CONTROL" || ln === "MAP_WORLD_ANCHOR" || ln === "GEO_WORLD_ANCHOR") {
+                    try { l.property("Position").setValue([halfW, halfH, 0]); } catch (e) {}
+                    continue;
+                }
+                if (ln === "MAP_3D_CAMERA" || (typeof CameraLayer !== "undefined" && (l instanceof CameraLayer))) {
+                    try {
+                        var camPos = l.property("Position");
+                        var camPoi = l.property("Point of Interest");
+                        if (camPos && camPos.numKeys === 0) camPos.setValue([halfW, halfH, -1866.0]);
+                        else if (hasDelta) shiftPropXY(camPos, deltaX, deltaY);
+                        if (camPoi && camPoi.numKeys === 0) camPoi.setValue([halfW, halfH, 0]);
+                        else if (hasDelta) shiftPropXY(camPoi, deltaX, deltaY);
+                        var camOpts = l.property("ADBE Camera Options Group");
+                        if (camOpts && camOpts.property("ADBE Camera Zoom") && camOpts.property("ADBE Camera Zoom").numKeys === 0) {
+                            camOpts.property("ADBE Camera Zoom").setValue(1866.0);
+                        }
+                    } catch (eCam) {}
+                    continue;
+                }
+                if (hasDelta && l.parent && (l.parent.name === "MAP_WORLD_ANCHOR" || l.parent.name === "GEO_WORLD_ANCHOR")) {
+                    // Skip shifting 3D PIN_ layers (upgradeAndHealPinLayers converts them cleanly)
+                    // and skip layers whose Position already uses a dynamic thisComp.width expression
+                    if (ln.indexOf("PIN_") === 0) continue;
+                    var childPosProp = l.property("Transform").property("Position");
+                    if (childPosProp && childPosProp.expression && childPosProp.expression.indexOf("thisComp.width") !== -1) {
+                        continue;
+                    }
+                    shiftPropXY(childPosProp, deltaX, deltaY);
+                    continue;
+                }
+            }
+
+            if (ln === "MAP_BACKGROUND_CANVAS" || ln === "MAPCOMP_BASE_CANVAS" || ln === "MAP_WATERMASK_MATTE" || ln === "MAP_STYLE_COLORIZER") {
+                try {
+                    l.property("Position").setValue([halfW, halfH]);
+                    var src = l.source;
+                    if (src && !(src instanceof CompItem)) {
+                        src.width = newW;
+                        src.height = newH;
+                    }
+                } catch (e2) {}
+            } else if (ln === "MAP_HORIZON_FOG") {
+                try { l.property("Position").setValue([halfW, newH * 0.12]); } catch (eFog) {}
+            } else if (ln === "MAP_ATTRIBUTION_CREDIT" || ln === "GEO_MAP_ATTRIBUTION") {
+                try { l.property("Position").setValue([24, newH - 20]); } catch (e3) {}
+            } else if (ln === "MAP_NORTH_COMPASS") {
+                try { l.property("Position").setValue([newW - 85, 85]); } catch (eCmp) {}
+            } else if (ln === "MAP_SCALE_BAR") {
+                try { l.property("Position").setValue([140, newH - 50]); } catch (eSb) {}
+            } else if (ln === "MAP_SCALE_TEXT") {
+                try { l.property("Position").setValue([140, newH - 62]); } catch (eSt) {}
+            } else if (ln === "LOCATOR_INSET_FRAME") {
+                try {
+                    var locScale = Math.min(1.0, Math.max(0.55, Math.min(newW, newH) / 1080.0));
+                    var boxW = 320 * locScale;
+                    var boxH = 180 * locScale;
+                    var margin = Math.round(40 * locScale);
+                    var oldPos = l.property("Transform").property("Position").value || [200, 130];
+                    var isRight = (oldW > 0 && oldPos[0] > oldW * 0.55);
+                    var isBottom = (oldH > 0 && oldPos[1] > oldH * 0.55);
+                    var targetX = isRight ? (newW - margin - boxW / 2) : (margin + boxW / 2);
+                    var targetY = isBottom ? (newH - margin - boxH / 2) : (margin + boxH / 2);
+                    l.property("Transform").property("Position").setValue([targetX, targetY]);
+                    l.property("Transform").property("Scale").setValue([locScale * 100, locScale * 100]);
+                } catch (eLoc) {}
+            } else if (ln === "LOCATOR_TARGET_BOX") {
+                try {
+                    var locScale2 = Math.min(1.0, Math.max(0.55, Math.min(newW, newH) / 1080.0));
+                    l.property("Transform").property("Position").expression = buildDynamicLocatorTargetPosExpr(320, 180);
+                    l.property("Transform").property("Scale").expression = [
+                        "function getCtrl(){ try { return thisComp.layer('MAP_CAMERA_CONTROLLER'); } catch(e){ return thisComp.layer('GEO_MAPCOMP_CONTROL'); } }",
+                        "var z = getCtrl().effect('Mapcomp Zoom')('Slider');",
+                        "var s = Math.max(25, Math.min(200, 180 - (z - 3) * 14)) * " + locScale2.toFixed(3) + ";",
+                        "[s, s];"
+                    ].join("\n");
+                } catch (eLocT) {}
+            }
+        }
+
+        // Upgrade & heal all 3D or baked-2D PIN_ layers using exact known oldW x oldH!
+        var ctrlLyr = null;
+        for (var ci = 1; ci <= comp.numLayers; ci++) {
+            var cNm = comp.layer(ci).name;
+            if (cNm === "MAP_CAMERA_CONTROLLER" || cNm === "GEO_MAPCOMP_CONTROL") {
+                ctrlLyr = comp.layer(ci);
+                break;
+            }
+        }
+        if (ctrlLyr) {
+            upgradeAndHealPinLayers(comp, ctrlLyr, oldW, oldH);
+        }
+    }
+
     function ensureMapcompRig(comp, viewData) {
         viewData = viewData || {};
         var initLat = (viewData.centerLat !== undefined) ? parseFloat(viewData.centerLat) : 39.9255;
@@ -321,6 +683,18 @@ var GeoMotionHost = (function () {
         } else {
             anchorLayer.name = "MAP_WORLD_ANCHOR";
             anchorLayer.comment = "Internal 3D Coordinate Anchor (Parent for all map layers)";
+            // If user resized the composition manually via AE Composition Settings (Cmd+K),
+            // anchorLayer.Position will still be at [oldW/2, oldH/2]! Auto-recenter all map layers!
+            try {
+                var curAnchorPos = anchorLayer.property("Position").value;
+                if (curAnchorPos && anchorLayer.property("Position").numKeys === 0) {
+                    var oldAnchorW = Math.round(curAnchorPos[0] * 2);
+                    var oldAnchorH = Math.round(curAnchorPos[1] * 2);
+                    if (oldAnchorW > 100 && oldAnchorH > 100 && (Math.abs(oldAnchorW - comp.width) > 2 || Math.abs(oldAnchorH - comp.height) > 2)) {
+                        recenterMapcompLayers(comp, oldAnchorW, oldAnchorH, comp.width, comp.height, false, true);
+                    }
+                }
+            } catch (eAutoRecenter) {}
         }
 
         // Always keep MAP_WORLD_ANCHOR expressions up to date:
@@ -450,41 +824,8 @@ var GeoMotionHost = (function () {
             }
         } catch (eMbComp) {}
 
-        // Auto-upgrade any legacy 3D PIN_ & PIN_TEXT_ layers to 2D toComp() screen-space so they never get cropped by 3D map tiles
-        try {
-            for (var pIdx = 1; pIdx <= comp.numLayers; pIdx++) {
-                var pLyr = comp.layer(pIdx);
-                if (pLyr.name.indexOf("PIN_") === 0 && pLyr.name.indexOf("PIN_TEXT_") !== 0 && pLyr.threeDLayer) {
-                    var pPosVal = pLyr.property("Transform").property("Position").value;
-                    var localX = pPosVal[0] || (comp.width / 2);
-                    var localY = pPosVal[1] || (comp.height / 2);
-                    pLyr.threeDLayer = false;
-                    pLyr.parent = null;
-                    pLyr.property("Transform").property("Position").expression = [
-                        "function getAnchor(){ try { return thisComp.layer('MAP_WORLD_ANCHOR'); } catch(e){ return thisComp.layer('GEO_WORLD_ANCHOR'); } }",
-                        "var p = getAnchor().toComp([" + localX.toFixed(2) + ", " + localY.toFixed(2) + ", 0]);",
-                        "[p[0], p[1]];"
-                    ].join("\n");
-                    pLyr.property("Transform").property("Scale").expression = "";
-                    pLyr.property("Transform").property("Scale").setValue([100, 100]);
-                    pLyr.property("Transform").property("Rotation").expression = "";
-                    pLyr.property("Transform").property("Rotation").setValue(0);
-                    pLyr.comment = "Auto-upgraded 2D Screen-Space Pin via toComp()";
-                }
-            }
-            for (var tIdx = 1; tIdx <= comp.numLayers; tIdx++) {
-                var tLyr = comp.layer(tIdx);
-                if (tLyr.name.indexOf("PIN_TEXT_") === 0 && tLyr.threeDLayer) {
-                    var tPosVal = tLyr.property("Transform").property("Position").value;
-                    tLyr.threeDLayer = false;
-                    tLyr.property("Transform").property("Position").setValue([0, tPosVal[1] || -32]);
-                    tLyr.property("Transform").property("Scale").expression = "";
-                    tLyr.property("Transform").property("Scale").setValue([100, 100]);
-                    tLyr.property("Transform").property("Rotation").expression = "";
-                    tLyr.property("Transform").property("Rotation").setValue(0);
-                }
-            }
-        } catch (ePinUp) {}
+        // Auto-upgrade & heal any legacy 3D or static-baked 2D PIN_ & LOCATOR_ layers
+        upgradeAndHealPinLayers(comp, ctrlLayer, null, null);
 
         return {
             controller: ctrlLayer,
@@ -1564,27 +1905,12 @@ var GeoMotionHost = (function () {
                 pinLayer.label = 14;
                 pinLayer.threeDLayer = false;
                 pinLayer.parent = null;
+                pinLayer.property("Transform").property("Anchor Point").setValue([0, 0]);
 
                 addOrGetSlider(pinLayer, "Feature Latitude", parseFloat(data.lat));
                 addOrGetSlider(pinLayer, "Feature Longitude", parseFloat(data.lon));
 
-                pinLayer.property("Transform").property("Position").expression = [
-                    "function getCtrl(){ try { return thisComp.layer('MAP_CAMERA_CONTROLLER'); } catch(e){ return thisComp.layer('GEO_MAPCOMP_CONTROL'); } }",
-                    "function getAnchor(){ try { return thisComp.layer('MAP_WORLD_ANCHOR'); } catch(e){ return thisComp.layer('GEO_WORLD_ANCHOR'); } }",
-                    "var ctrl = getCtrl();",
-                    "var anchor = getAnchor();",
-                    "var refLat = ctrl.effect('Reference Lat')('Slider');",
-                    "var refLon = ctrl.effect('Reference Lon')('Slider');",
-                    "var refZ = ctrl.effect('Reference Zoom')('Slider');",
-                    "var myLat = effect('Feature Latitude')('Slider');",
-                    "var myLon = effect('Feature Longitude')('Slider');",
-                    "var scale = 256 * Math.pow(2, refZ);",
-                    "function px(lo){ return (lo + 180.0) / 360.0 * scale; }",
-                    "function py(la){ var s = Math.sin(la * Math.PI / 180.0); s = Math.min(Math.max(s, -0.9999), 0.9999); return (0.5 - Math.log((1+s)/(1-s)) / (4 * Math.PI)) * scale; }",
-                    "var localPt = [(thisComp.width / 2) + (px(myLon) - px(refLon)), (thisComp.height / 2) + (py(myLat) - py(refLat)), 0];",
-                    "var p = anchor.toComp(localPt);",
-                    "[p[0], p[1]];"
-                ].join("\n");
+                pinLayer.property("Transform").property("Position").expression = buildDynamicPinPositionExpr();
 
                 var autoScale = (data.autoCounterScale !== undefined) ? data.autoCounterScale : data.counterScale;
                 if (autoScale === false) {
@@ -2000,6 +2326,8 @@ var GeoMotionHost = (function () {
             try {
                 var data = JSON.parse(payloadJson || "{}");
                 var comp = getOrCreateActiveGeoComp(data);
+                var oldW = comp.width;
+                var oldH = comp.height;
                 var newW = parseInt(data.width, 10) || comp.width;
                 var newH = parseInt(data.height, 10) || comp.height;
                 var newFps = parseFloat(data.fps) || comp.frameRate;
@@ -2011,30 +2339,7 @@ var GeoMotionHost = (function () {
                 comp.duration = newDur;
                 if (data.bgColor) comp.bgColor = hexToRgb(data.bgColor);
 
-                var halfW = newW / 2;
-                var halfH = newH / 2;
-
-                // Re-center controller, anchor & solid canvas
-                for (var i = 1; i <= comp.numLayers; i++) {
-                    var l = comp.layer(i);
-                    var ln = l.name;
-                    if (ln === "MAP_CAMERA_CONTROLLER" || ln === "GEO_MAPCOMP_CONTROL" || ln === "MAP_WORLD_ANCHOR" || ln === "GEO_WORLD_ANCHOR") {
-                        try { l.property("Position").setValue([halfW, halfH, 0]); } catch (e) {}
-                    }
-                    if (ln === "MAP_BACKGROUND_CANVAS" || ln === "MAPCOMP_BASE_CANVAS") {
-                        try {
-                            l.property("Position").setValue([halfW, halfH]);
-                            var src = l.source;
-                            if (src && !(src instanceof CompItem)) {
-                                src.width = newW;
-                                src.height = newH;
-                            }
-                        } catch (e2) {}
-                    }
-                    if (ln === "MAP_ATTRIBUTION_CREDIT" || ln === "GEO_MAP_ATTRIBUTION") {
-                        try { l.property("Position").setValue([newW - 20, newH - 20]); } catch (e3) {}
-                    }
-                }
+                recenterMapcompLayers(comp, oldW, oldH, newW, newH, false, data.recenterRig !== false);
 
                 if (data.motionBlur !== undefined) {
                     try { comp.motionBlur = (data.motionBlur === true || data.motionBlur === "true"); } catch (emb) {}
@@ -2067,6 +2372,8 @@ var GeoMotionHost = (function () {
             try {
                 var data = JSON.parse(payloadJson || "{}");
                 var comp = getOrCreateActiveGeoComp(data);
+                var oldW = comp.width;
+                var oldH = comp.height;
                 var newComp = comp.duplicate();
 
                 var targetName = data.targetName || (comp.name + " (" + (data.presetLabel || "Copy") + ")");
@@ -2080,34 +2387,7 @@ var GeoMotionHost = (function () {
                 if (data.duration) newComp.duration = parseFloat(data.duration);
                 if (data.bgColor) newComp.bgColor = hexToRgb(data.bgColor);
 
-                var halfW = newW / 2;
-                var halfH = newH / 2;
-
-                // Re-center rig in the duplicated comp and optionally clean atlas tiles
-                for (var i = newComp.numLayers; i >= 1; i--) {
-                    var l = newComp.layer(i);
-                    if (data.cleanAtlas && (l.name.indexOf("MAP_TILES_") === 0 || l.name.indexOf("MAPCOMP_ATLAS_") === 0)) {
-                        l.remove();
-                        continue;
-                    }
-                    var ln = l.name;
-                    if (ln === "MAP_CAMERA_CONTROLLER" || ln === "GEO_MAPCOMP_CONTROL" || ln === "MAP_WORLD_ANCHOR" || ln === "GEO_WORLD_ANCHOR") {
-                        try { l.property("Position").setValue([halfW, halfH, 0]); } catch (e) {}
-                    }
-                    if (ln === "MAP_BACKGROUND_CANVAS" || ln === "MAPCOMP_BASE_CANVAS") {
-                        try {
-                            l.property("Position").setValue([halfW, halfH]);
-                            var src = l.source;
-                            if (src && !(src instanceof CompItem)) {
-                                src.width = newW;
-                                src.height = newH;
-                            }
-                        } catch (e2) {}
-                    }
-                    if (ln === "MAP_ATTRIBUTION_CREDIT" || ln === "GEO_MAP_ATTRIBUTION") {
-                        try { l.property("Position").setValue([newW - 20, newH - 20]); } catch (e3) {}
-                    }
-                }
+                recenterMapcompLayers(newComp, oldW, oldH, newW, newH, !!data.cleanAtlas, true);
 
                 if (data.openAfterDup !== false) {
                     newComp.openInViewer();
@@ -2512,10 +2792,13 @@ var GeoMotionHost = (function () {
                 targetBox.property("Transform").property("Position").expression = [
                     "function getCtrl(){ try { return thisComp.layer('MAP_CAMERA_CONTROLLER'); } catch(e){ return thisComp.layer('GEO_MAPCOMP_CONTROL'); } }",
                     "var c = getCtrl();",
+                    "var f = thisComp.layer('LOCATOR_INSET_FRAME');",
+                    "var fPos = f.transform.position;",
+                    "var fScale = f.transform.scale[0] / 100.0;",
                     "var lat = c.effect('Mapcomp Latitude')('Slider');",
                     "var lon = c.effect('Mapcomp Longitude')('Slider');",
-                    "var x = " + posX + " + (lon / 180.0) * " + (boxW / 2 - 16) + ";",
-                    "var y = " + posY + " - (lat / 85.0) * " + (boxH / 2 - 12) + ";",
+                    "var x = fPos[0] + (lon / 180.0) * (" + (boxW / 2 - 16) + " * fScale);",
+                    "var y = fPos[1] - (lat / 85.0) * (" + (boxH / 2 - 12) + " * fScale);",
                     "[x, y];"
                 ].join("\n");
 
